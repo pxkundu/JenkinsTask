@@ -9,10 +9,10 @@ pipeline {
             steps {
                 script {
                     // Fetch the secret from AWS Secrets Manager
-                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id github-ssh-key --query SecretString --output text", returnStdout: true).trim()
+                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id jenkins-pipeline-secrets --query SecretString --output text", returnStdout: true).trim()
                     
                     // Parse JSON to extract the github_ssh_key value
-                    def sshKey = readJSON(text: secretJson).github_ssh_key
+                    def sshKey = readJSON(text: secretJson).partha_github_ssh_key
                     
                     def keyPath = "${env.WORKSPACE}/id_rsa"
 
