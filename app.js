@@ -17,7 +17,12 @@ app.get('/', async (req, res) => {
         table += '</table>';
         res.send(table);
     } catch (err) {
-        res.send('<h1>Build History Unavailable</h1>');
+        res.send('<!DOCTYPE html>
+<html>
+<body>
+    <h1>Hello from Jenkins and NGINX!</h1>
+</body>
+</html>');
     }
 });
 
