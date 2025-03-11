@@ -1,6 +1,22 @@
 pipeline {
     agent { label 'Partha-Jenkins-Slave-Agent' }  // Run on the slave node
     stages {
+        stage('Debug Environment') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            echo "Git version: $(git --version)"
+                            echo "SSH test to GitHub: $(ssh -T git@github.com || echo 'Failed')"
+                            echo "Docker version: $(docker --version)"
+                        '''
+                    } catch (Exception e) {
+                        echo "Environment check failed: ${e.getMessage()}"
+                        error "Aborting due to environment setup failure"
+                    }
+                }
+            }
+        }
         stage('Install Docker') {
             steps {
                 script {
