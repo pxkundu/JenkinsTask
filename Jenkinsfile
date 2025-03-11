@@ -9,7 +9,7 @@ pipeline {
             steps {
                 script {
                     // Fetch SSH key from AWS Secrets Manager
-                    def sshKey = sh(script: "aws secretsmanager get-secret-value --secret-id github-ssh-key --query SecretString --output text", returnStdout: true).trim()
+                    def sshKey = sh(script: "aws secretsmanager get-secret-value --secret-id jenkins-pipeline-secrets --query SecretString --output text", returnStdout: true).trim()
                     def keyPath = "${env.WORKSPACE}/id_rsa"
 
                     // Write the SSH key to a temporary file
