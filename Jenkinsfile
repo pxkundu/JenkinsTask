@@ -13,7 +13,7 @@ pipeline {
                     def keyPath = "${env.WORKSPACE}/id_rsa"
 
                     // Write the SSH key to a temporary file
-                    writeFile file: keyPath, text: sshKey
+                    writeFile file: keyPath, text: sshKey.partha_github_ssh_key
                     sh "chmod 600 ${keyPath}"
 
                     // Configure SSH environment
