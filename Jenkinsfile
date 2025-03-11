@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'Partha-Jenkins-Slave-Agent' }  // Use a specific agent for isolation
+    agent { label 'Partha-Jenkins-Slave-Agent' }
     parameters {
         string(name: 'REPO_URL', defaultValue: 'git@github.com:pxkundu/JenkinsTask.git', description: 'GitHub repository URL')
         string(name: 'BRANCH', defaultValue: 'Development', description: 'Branch to clone')
@@ -8,13 +8,18 @@ pipeline {
         stage('Setup SSH Key') {
             steps {
                 script {
-                    // Fetch SSH key from AWS Secrets Manager
-                    def sshKey = sh(script: "aws secretsmanager get-secret-value --secret-id jenkins-pipeline-secrets --query SecretString --output text", returnStdout: true).trim()
+                    // Fetch the secret from AWS Secrets Manager
+                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id github-ssh-key --query SecretString --output text", returnStdout: true).trim()
+                    
+                    // Parse JSON to extract the github_ssh_key value
+                    def sshKey = readJSON(text: secretJson).github_ssh_key
+                    
                     def keyPath = "${env.WORKSPACE}/id_rsa"
 
                     // Write the SSH key to a temporary file
-                    writeFile file: keyPath, text: sshKey.partha_github_ssh_key
+                    writeFile file: keyPath, text: sshKey
                     sh "chmod 600 ${keyPath}"
+                    sh "chown ${env.USER}:${env.USER} ${keyPath}"  // Ensure ownership matches the user
 
                     // Configure SSH environment
                     sh '''
@@ -23,13 +28,16 @@ pipeline {
                         chmod 600 ~/.ssh/known_hosts
                     '''
 
-                    // Start ssh-agent and add the key
+                    // Start ssh-agent and add the key with error handling
                     sshagent(credentials: []) {
                         sh """
-                            eval `ssh-agent -s`
-                            ssh-add ${keyPath}
+                            eval \$(ssh-agent -s)
+                            ssh-add ${keyPath} || { echo "Failed to add SSH key"; exit 1; }
                         """
                     }
+
+                    // Verify SSH connection
+                    sh "ssh -T git@github.com || { echo 'SSH connection test failed'; exit 1; }"
                 }
             }
         }
@@ -94,6 +102,7 @@ pipeline {
             script {
                 def keyPath = "${env.WORKSPACE}/id_rsa"
                 sh "rm -f ${keyPath} || true"
+                sh "rm -f ~/.ssh/known_hosts || true"  // Optional: Clean known_hosts if regenerated
                 sh "ssh-agent -k || true"  // Kill ssh-agent
             }
         }
