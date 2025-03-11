@@ -17,12 +17,7 @@ app.get('/', async (req, res) => {
         table += '</table>';
         res.send(table);
     } catch (err) {
-        res.send('<!DOCTYPE html>
-<html>
-<body>
-    <h1>Hello from Jenkins and NGINX!</h1>
-</body>
-</html>');
+        res.send('<h1>Hello from Jenkins and NGINX!</h1>');
     }
 });
 
