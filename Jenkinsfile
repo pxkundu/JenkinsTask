@@ -1,22 +1,6 @@
 pipeline {
     agent { label 'Partha-Jenkins-Slave-Agent' }
     stages {
-        stage('Debug Environment') {
-            steps {
-                script {
-                    try {
-                        sh '''
-                            echo "Git version: $(git --version)"
-                            echo "SSH test to GitHub: $(ssh -T git@github.com || echo 'Failed')"
-                            echo "Docker version: $(docker --version)"
-                        '''
-                    } catch (Exception e) {
-                        echo "Environment check failed: ${e.getMessage()}"
-                        error "Aborting due to environment setup failure"
-                    }
-                }
-            }
-        }
         stage('Install Docker') {
             steps {
                 script {
@@ -38,22 +22,9 @@ pipeline {
                 script {
                     // Fetch the secret from AWS Secrets Manager
                     def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id jenkins-pipeline-secrets --query SecretString --output text", returnStdout: true).trim()
-                    echo "Raw secret JSON: ${secretJson}"  // Debug: Log the raw secret
-
-                    // Parse JSON to extract the api_key
-                    def apiConfig
-                    try {
-                        apiConfig = readJSON(text: secretJson)
-                    } catch (NoSuchMethodError e) {
-                        echo "readJSON not found, falling back to JsonSlurper"
-                        apiConfig = new groovy.json.JsonSlurper().parseText(secretJson)
-                    }
-
-                    def apiKey = apiConfig.api_key
-                    echo "API Key fetched (first 8 chars): ${apiKey.substring(0, Math.min(8, apiKey.length()))}..."  // Debug: Partial log
-
+                   
                     // Write the API key to config.json
-                    writeFile file: 'config/config.json', text: "{\"api_key\": \"${apiKey}\"}"
+                    writeFile file: 'config/config.json', text: "{\"api_key\": \"${secretJson}\"}"
                 }
             }
           }
@@ -63,7 +34,7 @@ pipeline {
                       try {
                           sh '''
                               # Build the Docker image with the updated config
-                              sudo docker build -t my-app-image .
+                              sudo docker build -t node-app-jenkins .
                           '''
                           echo 'Docker image built successfully'
                       } catch (Exception e) {
