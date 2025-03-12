@@ -1,75 +1,84 @@
-pipeline {
-    agent { label 'Partha-Jenkins-Slave-Agent' }
-    stages {
-        stage('Install Docker') {
-            steps {
-                script {
-                    try {
+// Define a method to allow the wrapper pipeline to execute this pipeline
+def runPipeline() {
+    pipeline {
+        agent { label 'Partha-Jenkins-Slave-Agent' }
+        stages {
+            stage('Verify Workspace') {
+                steps {
+                    script {
+                        // Verify the workspace contains the cloned code
                         sh '''
-                            chmod +x install_docker.sh
-                            ./install_docker.sh
+                            echo "Workspace contents before proceeding:"
+                            ls -la
+                            echo "Current branch:"
+                            git rev-parse --abbrev-ref HEAD
                         '''
-                        echo 'Docker installed successfully'
-                    } catch (Exception e) {
-                        echo "Docker install failed: ${e.getMessage()}"
-                        error "Aborting due to Docker install failure"
+
+                        // Ensure the workspace is up-to-date with the latest code
+                        git branch: 'Development',
+                            credentialsId: '',  // SSH key is already configured by the wrapper
+                            url: 'git@github.com:pxkundu/JenkinsTask.git'
+                    }
+                }
+            }
+            stage('Install Docker') {
+                steps {
+                    script {
+                        try {
+                            sh '''
+                                chmod +x install_docker.sh
+                                ./install_docker.sh
+                            '''
+                            echo 'Docker installed successfully'
+                        } catch (Exception e) {
+                            echo "Docker install failed: ${e.getMessage()}"
+                            error "Aborting due to Docker install failure"
+                        }
+                    }
+                }
+            }
+            stage('Build Docker Image') {
+                steps {
+                    script {
+                        try {
+                            sh '''
+                                sudo docker build -t my-app-image .
+                            '''
+                            echo 'Docker image built successfully'
+                        } catch (Exception e) {
+                            echo "Build failed: ${e.getMessage()}"
+                            error "Aborting due to build failure"
+                        }
+                    }
+                }
+            }
+            stage('Deploy Container') {
+                steps {
+                    script {
+                        try {
+                            sh '''
+                                chmod +x run_container.sh
+                                sudo ./run_container.sh
+                            '''
+                            echo 'Container deployed successfully'
+                        } catch (Exception e) {
+                            echo "Deploy failed: ${e.getMessage()}"
+                            error "Aborting due to deploy failure"
+                        }
                     }
                 }
             }
         }
-        stage('Fetch API Key and Configure') {
-            steps {
-                script {
-                    // Fetch the secret from AWS Secrets Manager
-                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id jenkins-pipeline-secrets --query SecretString --output text", returnStdout: true).trim()
-                   
-                    // Write the API key to config.json
-                    writeFile file: 'config/config.json', text: "{\"api_key\": \"${secretJson}\"}"
-                }
+        post {
+            failure {
+                echo 'Main pipeline failed!'
             }
-          }
-          stage('Build Docker Image') {
-              steps {
-                  script {
-                      try {
-                          sh '''
-                              # Build the Docker image with the updated config
-                              sudo docker build -t node-app-jenkins .
-                          '''
-                          echo 'Docker image built successfully'
-                      } catch (Exception e) {
-                          echo "Build failed: ${e.getMessage()}"
-                          error "Aborting due to build failure"
-                      }
-                  }
-              }
-          }
-          stage('Deploy Container') {
-              steps {
-                  script {
-                      try {
-                          sh '''
-                              # Make the run script executable
-                              chmod +x run_container.sh
+            success {
+                echo 'Main pipeline completed successfully! Access your app at http://<slave-public-ip>:8080'
+            }
+        }
+    }
+}
 
-                              # Run the container using the script from the repo
-                              sudo ./run_container.sh
-                          '''
-                          echo 'Container deployed successfully'
-                      } catch (Exception e) {
-                          echo "Deploy failed: ${e.getMessage()}"
-                          error "Aborting due to deploy failure"
-                      }
-                  }
-              }
-          }
-      }
-      post {
-          failure {
-              echo 'Pipeline failed!'
-          }
-          success {
-              echo 'Pipeline completed successfully! Access weather data at http://<slave-public-ip>:8080/weather'
-          }
-      }
-  }
+// Required for Jenkins to load this file
+return this
