@@ -13,11 +13,6 @@ def runPipeline() {
                             echo "Current branch:"
                             git rev-parse --abbrev-ref HEAD
                         '''
-
-                        // Ensure the workspace is up-to-date with the latest code
-                        git branch: 'Development',
-                            credentialsId: '',  // SSH key is already configured by the wrapper
-                            url: 'git@github.com:pxkundu/JenkinsTask.git'
                     }
                 }
             }
