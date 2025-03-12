@@ -37,7 +37,7 @@ pipeline {
             steps {
                 script {
                     // Fetch the secret from AWS Secrets Manager
-                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id weather-api-key --query SecretString --output text", returnStdout: true).trim()
+                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id jenkins-pipeline-secrets --query SecretString --output text", returnStdout: true).trim()
                     echo "Raw secret JSON: ${secretJson}"  // Debug: Log the raw secret
 
                     // Parse JSON to extract the api_key
