@@ -1,2 +1,0 @@
-# JenkinsTask
-For Jenkins tasks
