@@ -4,6 +4,6 @@ const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain');
     res.end('Hello from Jenkins and Node.js!');
 });
-server.listen(3000, () => {
-    console.log('Server running on port 3000');
+server.listen(80, () => {
+    console.log('Server running on port 80');
 });
