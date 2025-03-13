@@ -1,0 +1,131 @@
+pipeline {
+    agent { label 'Partha-Jenkins-Slave-Agent' }
+    parameters {
+        string(name: 'REPO_URL', defaultValue: 'git@github.com:pxkundu/JenkinsTask.git', description: 'GitHub repository URL to clone')
+        string(name: 'BRANCH', defaultValue: 'Development', description: 'Branch to clone')
+    }
+    stages {
+        stage('Fetch GitHub SSH Key') {
+            steps {
+                script {
+                    // Fetch the secret from AWS Secrets Manager
+                    def secretKey = sh(script: "aws secretsmanager get-secret-value --secret-id partha-jenkins-pipeline-secrets --query SecretString --output text", returnStdout: true).trim()
+
+                    // Fetch and parse the secret in one step, avoiding intermediate logging
+                    def SSHKey = sh(script: """
+                        aws secretsmanager get-secret-value --secret-id partha-jenkins-pipeline-secrets --query SecretString --output text | jq -r '.\"partha-jenkins-pipeline-secrets\"'
+                    """, returnStdout: true).trim()
+
+                    // Clean up key (replace \\n with actual newline, remove extra spaces, etc.)
+                    def cleanedKey = SSHKey.replaceAll('\\\\n', '\n').trim()
+
+
+                    // Configure SSH environment
+                    sh """
+                        echo "$cleanedKey" > ~/.ssh/github
+                        chmod 600 ~/.ssh/github
+                        
+                        echo -e "Host github.com\n  HostName github.com\n   IdentityFile ~/.ssh/github\n  StrictHostKeyChecking no\n  User git" > ~/.ssh/config
+                        chmod 600 ~/.ssh/config
+                        chown jenkinss:jenkinss ~/.ssh/config
+                    """
+                }
+            }
+        }
+        stage('Checkout Repo') {
+            steps {
+                script {
+                    // Checkout the repository using Git SCM, ensuring the SSH key is used
+                    checkout scm: [
+                        $class: 'GitSCM', 
+                        branches: [[name: "*/${params.BRANCH}"]],  // Using the provided branch from parameters
+                        userRemoteConfigs: [
+                            [
+                                url: params.REPO_URL,
+                                refspec: '+refs/heads/*:refs/remotes/origin/*'
+                            ]
+                        ]
+                    ]
+                }
+            }
+        }
+        stage('DebugEnvironment') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            echo "Git version: $(git --version)"
+                            echo "SSH test to GitHub: $(ssh -T git@github.com || echo 'Failed')"
+                            echo "Docker version: $(docker --version)"
+                        '''
+                    } catch (Exception e) {
+                        echo "Environment check failed: ${e.getMessage()}"
+                        error "Aborting due to environment setup failure"
+                    }
+                }
+            }
+        }
+        stage('InstallDocker') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            # Make the install script executable
+                            chmod +x install_docker.sh
+
+                            # Run the Docker installation script
+                            ./install_docker.sh
+                        '''
+                        echo 'Docker installed successfully'
+                    } catch (Exception e) {
+                        echo "Docker install failed: ${e.getMessage()}"
+                        error "Aborting due to Docker install failure"
+                    }
+                }
+            }
+        }
+        stage('BuildDockerImage') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            # Build the Docker image using the Dockerfile from the repo
+                            sudo docker build -t my-app-image .
+                        '''
+                        echo 'Docker image built successfully'
+                    } catch (Exception e) {
+                        echo "Build failed: ${e.getMessage()}"
+                        error "Aborting due to build failure"
+                    }
+                }
+            }
+        }
+        stage('DeployContainer') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            # Make the run script executable
+                            chmod +x run_container.sh
+
+                            # Run the container using the script from the repo
+                            sudo ./run_container.sh
+                        '''
+                        echo 'Container deployed successfully'
+                    } catch (Exception e) {
+                        echo "Deploy failed: ${e.getMessage()}"
+                        error "Aborting due to deploy failure"
+                    }
+                }
+            }
+        }
+    }
+    post {
+        failure {
+            echo 'Wrapper pipeline failed!'
+        }
+        success {
+            echo 'Wrapper pipeline completed successfully!'
+        }
+    }
+}
