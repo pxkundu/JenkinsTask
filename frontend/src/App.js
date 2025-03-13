@@ -11,14 +11,14 @@ function App() {
   }, []);
 
   const fetchTasks = () => {
-    axios.get('http://localhost:5000/api/tasks')
+    axios.get('http://54.92.165.176:5000/api/tasks')
       .then(res => setTasks(res.data))
       .catch(err => console.error('Fetch error:', err));
   };
 
   const addTask = () => {
     if (newTask.trim()) {
-      axios.post('http://localhost:5000/api/tasks', { title: newTask })
+      axios.post('http://54.92.165.176:5000/api/tasks', { title: newTask })
         .then(() => {
           setNewTask('');
           fetchTasks();
@@ -28,13 +28,13 @@ function App() {
   };
 
   const updateTask = (id, title) => {
-    axios.put(`http://localhost:5000/api/tasks/${id}`, { title })
+    axios.put(`http://54.92.165.176:5000/api/tasks/${id}`, { title })
       .then(fetchTasks)
       .catch(err => console.error('Update error:', err));
   };
 
   const deleteTask = (id) => {
-    axios.delete(`http://localhost:5000/api/tasks/${id}`)
+    axios.delete(`http://54.92.165.176:5000/api/tasks/${id}`)
       .then(fetchTasks)
       .catch(err => console.error('Delete error:', err));
   };
