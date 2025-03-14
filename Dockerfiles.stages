@@ -1,7 +1,6 @@
 // Define a method to allow the wrapper pipeline to execute this pipeline
 def runVerifyWorkspace() {
             stage('Verify Workspace') {
-                steps {
                     script {
                         // Verify the workspace contains the cloned code
                         sh '''
@@ -10,19 +9,17 @@ def runVerifyWorkspace() {
                             echo "Current branch:"
                             git rev-parse --abbrev-ref HEAD
                         '''
-
+            
                         // Ensure the workspace is up-to-date with the latest code
                         git branch: 'Development',
                             credentialsId: '',  // SSH key is already configured by the wrapper
                             url: 'git@github.com:pxkundu/JenkinsTask.git'
                     }
-                }
             }
         }
       def runInstallDocker() {
             stage('Install Docker') {
-                steps {
-                    script {
+                script {
                         try {
                             sh '''
                                 chmod +x install_docker.sh
@@ -34,13 +31,11 @@ def runVerifyWorkspace() {
                             error "Aborting due to Docker install failure"
                         }
                     }
-                }
             }
         }
         def runBuildDockerImage() {
             stage('Build Docker Image') {
-                steps {
-                    script {
+                script {
                         try {
                             sh '''
                                 sudo docker build -t my-app-image .
@@ -53,11 +48,10 @@ def runVerifyWorkspace() {
                     }
                 }
             }
-        }
+        
         def runDeployContainer() {
             stage('Deploy Container') {
-                steps {
-                    script {
+                script {
                         try {
                             sh '''
                                 chmod +x run_container.sh
@@ -71,7 +65,6 @@ def runVerifyWorkspace() {
                     }
                 }
             }
-        }
 
 // Required for Jenkins to load this file
 return this
