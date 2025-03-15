@@ -22,7 +22,7 @@ pipeline {
                 sh "docker ps -a"
                 sh "docker-compose logs"
                 timeout(time: 30, unit: 'SECONDS') {
-                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/tasks"  // Validate backend
+                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks"  // Validate backend
                     sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"      // Validate frontend
                 }
             }
@@ -43,7 +43,7 @@ pipeline {
                         sh "docker ps -a"
                         sh "docker-compose logs"
                         timeout(time: 30, unit: 'SECONDS') {
-                            sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/tasks"
+                            sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks"
                             sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"
                         }
                         // Restore BUILD_NUMBER for next run
