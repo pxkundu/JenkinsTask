@@ -19,6 +19,8 @@ pipeline {
                 sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx:${BUILD_NUMBER} || true"
                 sh "docker-compose build --no-cache"  // Build fresh from Dockerfiles
                 sh "docker-compose up -d"  // Run with BUILD_NUMBER tag
+                sh "docker ps -a"
+                sh "docker-compose logs"
                 timeout(time: 30, unit: 'SECONDS') {
                     sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/tasks"  // Validate backend
                     sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"      // Validate frontend
@@ -31,7 +33,9 @@ pipeline {
                         sh "docker-compose down || true"
                         sh "sed -i 's/${BUILD_NUMBER}/latest/g' docker-compose.yml"
                         sh "docker-compose pull"  // Pull stable latest images
-                        sh "docker-compose up -d"
+                        sh "docker-compose up -d --build"  // Run with stable latest images
+                        sh "docker ps -a"
+                        sh "docker-compose logs"
                         timeout(time: 30, unit: 'SECONDS') {
                             sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/tasks"
                             sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"

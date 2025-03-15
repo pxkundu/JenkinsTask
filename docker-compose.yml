@@ -1,6 +1,8 @@
 version: '3.8'
 services:
   backend:
+    volumes:
+      - ./backend/tasks.json:/app/tasks.json  # Persist tasks.json
     build:
       context: ./backend
       dockerfile: Dockerfile
