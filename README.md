@@ -1,10 +1,9 @@
-# Week 3, Day 4 Alternative: Simplified SaaS Task Manager with Nginx Reverse Proxy
+# Week 3, Day 4 Simplified: SaaS Task Manager with Nginx Reverse Proxy
 
 ## Overview
-A production-grade version of the Task Manager with Nginx as a reverse proxy, running frontend (8080) and backend (5000) in Docker, deployed via Jenkins Master-Slave architecture to AWS ECR and EC2.
+A simplified, production-grade Task Manager with Nginx reverse proxy, deployed via a single Jenkinsfile and Docker Compose. Uses AWS ECR for images and S3 for logs/configs.
 
 ## Setup
-- Replace `<your-username>`, `<your-bucket>`, `<account-id>` in files.
-- Push `task-manager` and `pipeline-lib` to GitHub.
-- Run `setup-scripts/deploy-instance.sh` to launch EC2.
-- Configure Jenkins with `Jenkinsfile`.
+- Replace `<your-username>`, `<your-bucket>`, `<account-id>` in `Jenkinsfile`.
+- Push to GitHub and configure Jenkins with `Jenkinsfile`.
+- Ensure EC2 instance `TaskManagerProd` is running with Docker and Docker Compose installed.
