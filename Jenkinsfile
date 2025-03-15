@@ -16,7 +16,7 @@ pipeline {
                 sh "docker-compose down || true"  // Stop any running containers
                 sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-${BUILD_NUMBER} || true"
                 sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-${BUILD_NUMBER} || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx:${BUILD_NUMBER} || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-${BUILD_NUMBER} || true"
                 sh "docker-compose build --no-cache"  // Build fresh from Dockerfiles
                 sh "docker-compose up -d"  // Run with BUILD_NUMBER tag
                 sh "docker ps -a"
