@@ -20,8 +20,8 @@ pipeline {
                 sh "docker-compose build --no-cache"  // Build fresh from Dockerfiles
                 sh "docker-compose up -d"  // Run with BUILD_NUMBER tag
                 timeout(time: 30, unit: 'SECONDS') {
-                    sh "curl --retry 5 --retry-delay 5 http://localhost/tasks"  // Validate backend
-                    sh "curl --retry 5 --retry-delay 5 http://localhost/"      // Validate frontend
+                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/tasks"  // Validate backend
+                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"      // Validate frontend
                 }
             }
             post {
@@ -29,13 +29,12 @@ pipeline {
                     script {
                         echo "Build or run failed, rolling back to stable ECR images"
                         sh "docker-compose down || true"
-                        sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
                         sh "sed -i 's/${BUILD_NUMBER}/latest/g' docker-compose.yml"
                         sh "docker-compose pull"  // Pull stable latest images
                         sh "docker-compose up -d"
                         timeout(time: 30, unit: 'SECONDS') {
-                            sh "curl --retry 5 --retry-delay 5 http://localhost/tasks"
-                            sh "curl --retry 5 --retry-delay 5 http://localhost/"
+                            sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/tasks"
+                            sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"
                         }
                         sh "sed -i 's/latest/${BUILD_NUMBER}/g' docker-compose.yml"  // Restore for next run
                     }
@@ -44,10 +43,9 @@ pipeline {
         }
         stage('Push Latest to ECR and Cleanup') {
             steps {
-                sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
-                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest"
-                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest"
-                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-latest"
+                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest"
+                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest"
+                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-latest"
                 retry(3) {
                     sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest"
                     sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest"
