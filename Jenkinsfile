@@ -80,7 +80,7 @@ pipeline {
     post {
         always {
             // Selective cleanup: keep running containers
-            sh "docker system prune -f --volumes || true"  // Remove unused images/volumes, keep running containers
+            sh "docker system prune -f || true"  // Remove unused images/volumes, keep running containers
             // Move docker-compose.yml and source to a persistent dir if needed
             sh "mkdir -p /home/jenkinss/deployed && cp docker-compose.yml /home/jenkinss/deployed/ || true"
             sh "rm -rf /home/jenkinss/workspace/Partha-jengit-Pipeline/* || true"  // Clear workspace
