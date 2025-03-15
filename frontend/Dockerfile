@@ -10,6 +10,6 @@ WORKDIR /app
 RUN npm install -g serve
 COPY --from=build /app/build .
 # Added for testing ECR push trigger
-ENV IMAGE_VERSION="v1.0.0"
+ENV FE_IMAGE_VERSION="v1.0.0"
 EXPOSE 8080
 CMD ["serve", "-s", ".", "-l", "8080"]

@@ -17,13 +17,17 @@ pipeline {
         stage('Check Dockerfile Changes') {
             steps {
                 script {
-                    def changes = sh(script: "git diff --name-only HEAD^ HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
+                    // Fallback to initial commit if no parent exists
+                    def lastCommit = sh(script: "git rev-parse HEAD^ || git rev-list --max-parents=0 HEAD", returnStdout: true).trim()
+                    def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
                     if (changes) {
                         echo "Dockerfile changes detected: ${changes}"
                         env.DOCKERFILE_CHANGES = 'true'
                     } else {
                         echo "No Dockerfile changes detected"
+                        env.DOCKERFILE_CHANGES = 'false'
                     }
+                    echo "DOCKERFILE_CHANGES is now: ${env.DOCKERFILE_CHANGES}"
                 }
             }
         }
@@ -81,12 +85,9 @@ pipeline {
         always {
             // Selective cleanup: keep running containers
             sh "docker system prune -f || true"  // Remove unused images/volumes, keep running containers
-            // Move docker-compose.yml and source to a persistent dir if needed
-            sh "mkdir -p /home/jenkinss/deployed && cp docker-compose.yml /home/jenkinss/deployed/ || true"
-            sh "rm -rf /home/jenkinss/workspace/Partha-jengit-Pipeline/* || true"  // Clear workspace
-            sh "cd /home/jenkinss/deployed && docker-compose logs > compose.log 2>&1 || true"
-            archiveArtifacts artifacts: '/home/jenkinss/deployed/compose.log', allowEmptyArchive: true
-            sh "rm -f /home/jenkinss/deployed/compose.log || true"
+            sh "docker-compose logs > compose.log 2>&1 || true"
+            archiveArtifacts artifacts: 'compose.log', allowEmptyArchive: true
+            sh 'rm -f compose.log'
         }
         success {
             echo "Deploy succeeded for Task manager project - ${BRANCH_NAME}"
