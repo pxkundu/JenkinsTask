@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git url: "${GIT_REPO}", branch: "${BRANCH_NAME}"
+                git url: "${GIT_REPO}", branch: "${BRANCH_NAME}" // Checkout the code
             }
         }
         stage('Build and Run with Docker Compose') {
@@ -39,15 +39,15 @@ pipeline {
                         sh "sed -i 's/task-nginx-${BUILD_NUMBER}/task-nginx-latest/g' docker-compose.yml"
                         // Pull and run stable latest images
                         sh "docker-compose pull || echo 'No stable images found in ECR, skipping pull'"
-                        sh "docker-compose up -d"
-                        sh "docker ps -a"
-                        sh "docker-compose logs"
+                        sh "docker-compose up -d" // Run with latest tags
+                        sh "docker ps -a" // List running containers
+                        sh "docker-compose logs" // Save logs for debugging
                         timeout(time: 30, unit: 'SECONDS') {
-                            sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks"
+                            sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks" // Validate backend
                             sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"
                         }
                         // Restore BUILD_NUMBER for next run
-                        sh "sed -i 's/task-backend-latest/task-backend-${BUILD_NUMBER}/g' docker-compose.yml"
+                        sh "sed -i 's/task-backend-latest/task-backend-${BUILD_NUMBER}/g' docker-compose.yml" // Restore BUILD_NUMBER
                         sh "sed -i 's/task-frontend-latest/task-frontend-${BUILD_NUMBER}/g' docker-compose.yml"
                         sh "sed -i 's/task-nginx-latest/task-nginx-${BUILD_NUMBER}/g' docker-compose.yml"
                     }
