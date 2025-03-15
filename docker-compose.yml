@@ -4,19 +4,19 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:${BUILD_NUMBER}"
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-${BUILD_NUMBER}"
     restart: unless-stopped
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:${BUILD_NUMBER}"
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-${BUILD_NUMBER}"
     restart: unless-stopped
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
-    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:${BUILD_NUMBER}"
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-${BUILD_NUMBER}"
     ports:
       - "80:80"
     depends_on:
