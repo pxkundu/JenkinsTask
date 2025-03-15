@@ -1,0 +1,162 @@
+@Library('pipeline-lib@1.2') _
+pipeline {
+    agent none
+    parameters {
+        string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Git branch')
+    }
+    environment {
+        APP_NAME = 'task-manager'
+        GIT_REPO = 'https://github.com/<your-username>/task-manager.git'
+        BACKEND_IMAGE = "task-backend:${BUILD_NUMBER}"
+        FRONTEND_IMAGE = "task-frontend:${BUILD_NUMBER}"
+        NGINX_IMAGE = "task-nginx:${BUILD_NUMBER}"
+        PREV_BACKEND_IMAGE = "task-backend:${BUILD_NUMBER.toInteger() - 1}"
+        PREV_FRONTEND_IMAGE = "task-frontend:${BUILD_NUMBER.toInteger() - 1}"
+        PREV_NGINX_IMAGE = "task-nginx:${BUILD_NUMBER.toInteger() - 1}"
+        S3_BUCKET = '<your-bucket>'
+        DEPLOY_INSTANCE = 'TaskManagerProd'
+    }
+    stages {
+        stage('Setup') {
+            agent { label 'docker-slave-east' }
+            steps {
+                withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                    script {
+                        def githubSecret = sh(script: 'aws secretsmanager get-secret-value --secret-id github-token --query SecretString --output text', returnStdout: true).trim()
+                        def githubCreds = readJSON text: githubSecret
+                        env.GIT_USER = githubCreds.username
+                        env.GIT_TOKEN = githubCreds.token
+                    }
+                    git url: "${GIT_REPO}", branch: "${BRANCH_NAME}", credentialsId: 'github-token'
+                }
+            }
+        }
+        stage('Build and Push') {
+            parallel {
+                stage('Backend') {
+                    agent { label 'docker-slave-east' }
+                    steps {
+                        retry(3) {
+                            buildDocker("${BACKEND_IMAGE}", 'backend', 'us-east-1')
+                        }
+                        scanImage("${BACKEND_IMAGE}")
+                    }
+                }
+                stage('Frontend') {
+                    agent { label 'docker-slave-west' }
+                    steps {
+                        retry(3) {
+                            buildDocker("${FRONTEND_IMAGE}", 'frontend', 'us-west-2')
+                        }
+                        scanImage("${FRONTEND_IMAGE}")
+                    }
+                }
+                stage('Nginx') {
+                    agent { label 'docker-slave-east' }
+                    steps {
+                        retry(3) {
+                            buildDocker("${NGINX_IMAGE}", 'nginx', 'us-east-1')
+                        }
+                        scanImage("${NGINX_IMAGE}")
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+            agent { label 'docker-slave-east' }
+            steps {
+                script {
+                    def sshKey = sh(script: 'aws secretsmanager get-secret-value --secret-id jenkins-ssh-key --query SecretString --output text', returnStdout: true).trim()
+                    writeFile file: 'id_rsa', text: sshKey
+                    sh 'chmod 600 id_rsa'
+                    def instanceIp = sh(script: "aws ec2 describe-instances --filters Name=tag:Name,Values=${DEPLOY_INSTANCE} Name=instance-state-name,Values=running --query 'Reservations[0].Instances[0].PublicIpAddress' --output text", returnStdout: true).trim()
+                    sh """
+                        ssh -i id_rsa -o StrictHostKeyChecking=no ec2-user@${instanceIp} '
+                            docker-compose down || true
+                            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+                            docker pull <account-id>.dkr.ecr.us-east-1.amazonaws.com/${BACKEND_IMAGE}
+                            docker pull <account-id>.dkr.ecr.us-west-2.amazonaws.com/${FRONTEND_IMAGE}
+                            docker pull <account-id>.dkr.ecr.us-east-1.amazonaws.com/${NGINX_IMAGE}
+                            echo "version: \'3.8\'" > docker-compose.yml
+                            echo "services:" >> docker-compose.yml
+                            echo "  backend:" >> docker-compose.yml
+                            echo "    image: <account-id>.dkr.ecr.us-east-1.amazonaws.com/${BACKEND_IMAGE}" >> docker-compose.yml
+                            echo "    restart: unless-stopped" >> docker-compose.yml
+                            echo "  frontend:" >> docker-compose.yml
+                            echo "    image: <account-id>.dkr.ecr.us-west-2.amazonaws.com/${FRONTEND_IMAGE}" >> docker-compose.yml
+                            echo "    restart: unless-stopped" >> docker-compose.yml
+                            echo "  nginx:" >> docker-compose.yml
+                            echo "    image: <account-id>.dkr.ecr.us-east-1.amazonaws.com/${NGINX_IMAGE}" >> docker-compose.yml
+                            echo "    ports:" >> docker-compose.yml
+                            echo "      - \'80:80\'" >> docker-compose.yml
+                            echo "    depends_on:" >> docker-compose.yml
+                            echo "      - backend" >> docker-compose.yml
+                            echo "      - frontend" >> docker-compose.yml
+                            echo "    restart: unless-stopped" >> docker-compose.yml
+                            docker-compose up -d
+                        '
+                    """
+                    timeout(time: 30, unit: 'SECONDS') {
+                        sh "curl --retry 5 --retry-delay 5 http://${instanceIp}/tasks"
+                    }
+                }
+            }
+            post {
+                failure {
+                    script {
+                        sh """
+                            ssh -i id_rsa -o StrictHostKeyChecking=no ec2-user@${instanceIp} '
+                                docker-compose down || true
+                                docker pull <account-id>.dkr.ecr.us-east-1.amazonaws.com/${PREV_BACKEND_IMAGE}
+                                docker pull <account-id>.dkr.ecr.us-west-2.amazonaws.com/${PREV_FRONTEND_IMAGE}
+                                docker pull <account-id>.dkr.ecr.us-east-1.amazonaws.com/${PREV_NGINX_IMAGE}
+                                echo "version: \'3.8\'" > docker-compose.yml
+                                echo "services:" >> docker-compose.yml
+                                echo "  backend:" >> docker-compose.yml
+                                echo "    image: <account-id>.dkr.ecr.us-east-1.amazonaws.com/${PREV_BACKEND_IMAGE}" >> docker-compose.yml
+                                echo "    restart: unless-stopped" >> docker-compose.yml
+                                echo "  frontend:" >> docker-compose.yml
+                                echo "    image: <account-id>.dkr.ecr.us-west-2.amazonaws.com/${PREV_FRONTEND_IMAGE}" >> docker-compose.yml
+                                echo "    restart: unless-stopped" >> docker-compose.yml
+                                echo "  nginx:" >> docker-compose.yml
+                                echo "    image: <account-id>.dkr.ecr.us-east-1.amazonaws.com/${PREV_NGINX_IMAGE}" >> docker-compose.yml
+                                echo "    ports:" >> docker-compose.yml
+                                echo "      - \'80:80\'" >> docker-compose.yml
+                                echo "    depends_on:" >> docker-compose.yml
+                                echo "      - backend" >> docker-compose.yml
+                                echo "      - frontend" >> docker-compose.yml
+                                echo "    restart: unless-stopped" >> docker-compose.yml
+                                docker-compose up -d
+                            '
+                        """
+                    }
+                }
+            }
+        }
+    }
+    post {
+        always {
+            sh 'rm -f id_rsa'
+            withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                sh "aws s3 cp docker-compose.yml s3://${S3_BUCKET}/configs/docker-compose-${BUILD_NUMBER}.yml"
+                sh 'docker logs task-backend > backend.log 2>&1 || true'
+                sh 'docker logs task-frontend > frontend.log 2>&1 || true'
+                sh 'docker logs task-nginx > nginx.log 2>&1 || true'
+                logToCloudWatch('backend.log', 'backend')
+                logToCloudWatch('frontend.log', 'frontend')
+                logToCloudWatch('nginx.log', 'nginx')
+                sh "aws s3 cp backend.log s3://${S3_BUCKET}/logs/backend-${BUILD_NUMBER}.log"
+                sh "aws s3 cp frontend.log s3://${S3_BUCKET}/logs/frontend-${BUILD_NUMBER}.log"
+                sh "aws s3 cp nginx.log s3://${S3_BUCKET}/logs/nginx-${BUILD_NUMBER}.log"
+            }
+            archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
+            sh 'rm -f *.log'
+        }
+        success {
+            slackSend(channel: '#devops', message: "Deploy succeeded for ${APP_NAME} - ${BRANCH_NAME} at http://<domain>")
+        }
+        failure {
+            slackSend(channel: '#devops', message: "Deploy failed for ${APP_NAME} - ${BRANCH_NAME}. Rolled back.")
+        }
+    }
+}
