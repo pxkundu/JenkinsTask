@@ -14,9 +14,9 @@ pipeline {
         stage('Build and Run with Docker Compose') {
             steps {
                 sh "docker-compose down || true"  // Stop any running containers
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:${BUILD_NUMBER} || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:${BUILD_NUMBER} || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:${BUILD_NUMBER} || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-${BUILD_NUMBER} || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-${BUILD_NUMBER} || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx:${BUILD_NUMBER} || true"
                 sh "docker-compose build --no-cache"  // Build fresh from Dockerfiles
                 sh "docker-compose up -d"  // Run with BUILD_NUMBER tag
                 timeout(time: 30, unit: 'SECONDS') {
@@ -45,20 +45,20 @@ pipeline {
         stage('Push Latest to ECR and Cleanup') {
             steps {
                 sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
-                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:latest"
-                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:latest"
-                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:latest"
+                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest"
+                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest"
+                sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-latest"
                 retry(3) {
-                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:latest"
-                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:latest"
-                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:latest"
+                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest"
+                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest"
+                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-latest"
                 }
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:${BUILD_NUMBER} || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:${BUILD_NUMBER} || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:${BUILD_NUMBER} || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:latest || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:latest || true"
-                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:latest || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-${BUILD_NUMBER} || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-${BUILD_NUMBER} || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-${BUILD_NUMBER} || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest || true"
+                sh "docker image rm ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-latest || true"
             }
         }
     }
