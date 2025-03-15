@@ -1,13 +1,22 @@
 version: '3.8'
 services:
   backend:
-    image: "<account-id>.dkr.ecr.us-east-1.amazonaws.com/task-backend:<BUILD_NUMBER>"
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-backend:${BUILD_NUMBER}"
     restart: unless-stopped
   frontend:
-    image: "<account-id>.dkr.ecr.us-west-2.amazonaws.com/task-frontend:<BUILD_NUMBER>"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-frontend:${BUILD_NUMBER}"
     restart: unless-stopped
   nginx:
-    image: "<account-id>.dkr.ecr.us-east-1.amazonaws.com/task-nginx:<BUILD_NUMBER>"
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/task-nginx:${BUILD_NUMBER}"
     ports:
       - "80:80"
     depends_on:
