@@ -17,17 +17,17 @@ pipeline {
         stage('Check Dockerfile Changes') {
             steps {
                 script {
-                    // Fallback to initial commit if no parent exists
                     def lastCommit = sh(script: "git rev-parse HEAD^ || git rev-list --max-parents=0 HEAD", returnStdout: true).trim()
                     def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
+                    
                     if (changes) {
                         echo "Dockerfile changes detected: ${changes}"
-                        env.DOCKERFILE_CHANGES = 'true'
+                        currentBuild.rawBuild.buildVariables['DOCKERFILE_CHANGES'] = 'true'
                     } else {
                         echo "No Dockerfile changes detected"
-                        env.DOCKERFILE_CHANGES = 'false'
+                        currentBuild.rawBuild.buildVariables['DOCKERFILE_CHANGES'] = 'false'
                     }
-                    echo "DOCKERFILE_CHANGES is now: ${env.DOCKERFILE_CHANGES}"
+                    echo "DOCKERFILE_CHANGES is now: ${currentBuild.rawBuild.buildVariables['DOCKERFILE_CHANGES']}"
                 }
             }
         }
@@ -66,7 +66,7 @@ pipeline {
         }
         stage('Push Latest to ECR') {
             when {
-                expression { env.DOCKERFILE_CHANGES == 'true' }
+                expression { currentBuild.rawBuild.buildVariables['DOCKERFILE_CHANGES'] == 'true' }
             }
             steps {
                 sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
