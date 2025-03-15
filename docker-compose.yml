@@ -19,8 +19,6 @@ services:
       context: ./nginx
       dockerfile: Dockerfile
     image: "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-${BUILD_NUMBER}"
-    ports:
-      - "80:80"
     depends_on:
       - backend
       - frontend
