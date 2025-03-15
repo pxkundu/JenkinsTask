@@ -69,10 +69,10 @@ pipeline {
             sh 'rm -f compose.log'
         }
         success {
-            echo "Deploy succeeded for ${APP_NAME} - ${BRANCH_NAME}"
+            echo "Deploy succeeded for Task manager project - ${BRANCH_NAME}"
         }
         failure {
-            echo "Deploy failed for ${APP_NAME} - ${BRANCH_NAME}. Rolled back to stable ECR images."
+            echo "Deploy failed for Task manager project  - ${BRANCH_NAME}. Rolled back to stable ECR images."
         }
     }
 }
