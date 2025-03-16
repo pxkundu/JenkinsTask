@@ -51,11 +51,12 @@ def buildAndRunWithDockerCompose() {
 
 def checkAndPushToECR() {
     stage('Push Latest to ECR') {
-        def lastCommit = sh(script: "git rev-parse HEAD^ || git rev-list --max-parents=0 HEAD", returnStdout: true).trim()
-        def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
-        if (changes && !changes.isEmpty()) {
-            echo "Dockerfile changes detected: ${changes}"
-            script {
+        script {
+            def lastCommit = sh(script: "git rev-parse HEAD^ || git rev-list --max-parents=0 HEAD", returnStdout: true).trim()
+            def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
+            if (changes && !changes.isEmpty()) {
+                echo "Dockerfile changes detected: ${changes}"
+                
                 // Before pushing Delete remote latest images first with docker command
                 sh "docker rmi ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest || true"
                 sh "docker rmi ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest || true"
@@ -71,9 +72,10 @@ def checkAndPushToECR() {
                 sh "docker rmi ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-${BUILD_NUMBER} || true"
                 sh "docker rmi ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-${BUILD_NUMBER} || true"
                 sh "docker rmi ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-${BUILD_NUMBER} || true"
+        
+            } else {
+                echo "No Dockerfile changes detected"
             }
-        } else {
-            echo "No Dockerfile changes detected"
         }
     }
 }
