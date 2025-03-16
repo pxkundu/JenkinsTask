@@ -9,6 +9,6 @@ FROM node:20
 WORKDIR /app
 RUN npm install -g serve
 COPY --from=build /app/build .
-ENV VERSION="1.1.0"
+ENV VERSION="1.2.0"
 EXPOSE 8080
 CMD ["serve", "-s", ".", "-l", "8080"]
