@@ -39,12 +39,14 @@ pipeline {
                 git url: "${GIT_REPO}", branch: "${BRANCH_NAME}"
             }
         }
-        stage('Load and Run Jenkinsfile.functions') {
+        stage('Load and Run Main Jenkinsfile') {
             steps {
                 script {
                     // Load and execute Jenkinsfile.functions from the cloned repo
                     def pipelineScript = load "Jenkinsfile.functions"
-                    pipelineScript.runPipeline()
+                    pipelineScript.checkDockerFileChanges()
+                    pipelineScript.buildAndRunWithDockerCompose()
+                    pipelineScript.checkAndPushToECR()
                 }
             }
         }
@@ -54,6 +56,17 @@ pipeline {
             // Cleanup SSH key and config
             sh "rm -f ~/.ssh/github || true"
             sh "rm -f /home/jenkinss/.ssh/config || true"
+            sh "docker system prune -f || true"  // Clean unused images
+            sh "mkdir -p /home/jenkinss/deployed && cp docker-compose.yml /home/jenkinss/deployed/ || true"
+            sh "rm -rf /home/jenkinss/workspace/Partha-jengit-Pipeline/* || true"
+            sh "cd /home/jenkinss/deployed && docker-compose logs > compose.log 2>&1 || true"
+            archiveArtifacts artifacts: '/home/jenkinss/deployed/compose.log', allowEmptyArchive: true
+        }
+        success {
+            echo "Deploy succeeded for Task manager project - ${BRANCH_NAME}"
+        }
+        failure {
+            echo "Deploy failed for Task manager project - ${BRANCH_NAME}. Rolled back to stable ECR images."
         }
     }
 }
