@@ -16,34 +16,32 @@ def checkDockerFileChanges() {
 def buildAndRunWithDockerCompose() {
     stage('Build and Run with Docker Compose') {
         script {
-            sh "docker-compose down || true"  // Preserve volumes
-            sh "docker-compose build --no-cache"
-            sh "docker-compose up -d"
-            sh "docker ps -a"
-            timeout(time: 30, unit: 'SECONDS') {
-                sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks"
-                sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"
-            }
-        }
-        post {
-            failure {
-                script {
-                    echo "Build or run failed, rolling back to stable ECR images"
-                    sh "docker-compose down || true"
-                    sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
-                    sh "sed -i 's/task-backend-${BUILD_NUMBER}/task-backend-latest/g' docker-compose.yml"
-                    sh "sed -i 's/task-frontend-${BUILD_NUMBER}/task-frontend-latest/g' docker-compose.yml"
-                    sh "sed -i 's/task-nginx-${BUILD_NUMBER}/task-nginx-latest/g' docker-compose.yml"
-                    sh "docker-compose pull || echo 'No stable images found in ECR, skipping pull'"
-                    sh "docker-compose up -d"
-                    timeout(time: 30, unit: 'SECONDS') {
-                        sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks"
-                        sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"
-                    }
-                    sh "sed -i 's/task-backend-latest/task-backend-${BUILD_NUMBER}/g' docker-compose.yml"
-                    sh "sed -i 's/task-frontend-latest/task-frontend-${BUILD_NUMBER}/g' docker-compose.yml"
-                    sh "sed -i 's/task-nginx-latest/task-nginx-${BUILD_NUMBER}/g' docker-compose.yml"
+            try {
+                sh "docker-compose down || true"  // Preserve volumes
+                sh "docker-compose up -d --build"
+                sh "docker ps -a"
+                timeout(time: 30, unit: 'SECONDS') {
+                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks"
+                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"
                 }
+            } catch (Exception e) {
+                echo "Build or run failed: ${e.message}"
+                echo "Rolling back to stable ECR images"
+                sh "docker-compose down || true"
+                sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
+                sh "sed -i 's/task-backend-${BUILD_NUMBER}/task-backend-latest/g' docker-compose.yml"
+                sh "sed -i 's/task-frontend-${BUILD_NUMBER}/task-frontend-latest/g' docker-compose.yml"
+                sh "sed -i 's/task-nginx-${BUILD_NUMBER}/task-nginx-latest/g' docker-compose.yml"
+                sh "docker-compose pull || echo 'No stable images found in ECR, skipping pull'"
+                sh "docker-compose up -d"
+                timeout(time: 30, unit: 'SECONDS') {
+                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/api/tasks"
+                    sh "curl --retry 5 --retry-delay 5 http://partha.snehith-dev.com/"
+                }
+                sh "sed -i 's/task-backend-latest/task-backend-${BUILD_NUMBER}/g' docker-compose.yml"
+                sh "sed -i 's/task-frontend-latest/task-frontend-${BUILD_NUMBER}/g' docker-compose.yml"
+                sh "sed -i 's/task-nginx-latest/task-nginx-${BUILD_NUMBER}/g' docker-compose.yml"
+                error "Build failed, rollback completed"  // Fail the pipeline after rollback
             }
         }
     }
