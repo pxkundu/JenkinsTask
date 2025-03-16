@@ -5,7 +5,9 @@ pipeline {
         string(name: 'GIT_REPO', defaultValue: 'git@github.com:pxkundu/JenkinsTask.git', description: 'GitHub repository URL to clone')
         string(name: 'BRANCH_NAME', defaultValue: 'Staging', description: 'Branch to clone')
     }
-
+    environment {
+        DOCKERFILE_CHANGES = 'false'  // Initial value
+    }
     stages {
         stage('Checkout') {
             steps {
@@ -15,14 +17,18 @@ pipeline {
         stage('Check Dockerfile Changes') {
             steps {
                 script {
-                    // Fallback to initial commit if no parent exists
                     def lastCommit = sh(script: "git rev-parse HEAD^ || git rev-list --max-parents=0 HEAD", returnStdout: true).trim()
                     def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
-                    if (changes) {
+                    if (changes && !changes.isEmpty()) {
                         echo "Dockerfile changes detected: ${changes}"
+                        env.DOCKERFILE_CHANGES = 'true'
                     } else {
                         echo "No Dockerfile changes detected"
+                        env.DOCKERFILE_CHANGES = 'false'
                     }
+                }
+                withEnv(["DOCKERFILE_CHANGES=${env.DOCKERFILE_CHANGES}"]) {
+                    echo "DOCKERFILE_CHANGES is now: ${env.DOCKERFILE_CHANGES}"
                 }
             }
         }
@@ -42,7 +48,6 @@ pipeline {
                     script {
                         echo "Build or run failed, rolling back to stable ECR images"
                         sh "docker-compose down -v || true"
-                        sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
                         sh "sed -i 's/task-backend-${BUILD_NUMBER}/task-backend-latest/g' docker-compose.yml"
                         sh "sed -i 's/task-frontend-${BUILD_NUMBER}/task-frontend-latest/g' docker-compose.yml"
                         sh "sed -i 's/task-nginx-${BUILD_NUMBER}/task-nginx-latest/g' docker-compose.yml"
@@ -60,13 +65,11 @@ pipeline {
             }
         }
         stage('Push Latest to ECR') {
-            script {
-                def lastCommit = sh(script: "git rev-parse HEAD^ || git rev-list --max-parents=0 HEAD", returnStdout: true).trim()
-                def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
-                    
-                if (changes) {
-                    steps {
-                        sh "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
+            steps {
+                script {
+                    def lastCommit = sh(script: "git rev-parse HEAD^ || git rev-list --max-parents=0 HEAD", returnStdout: true).trim()
+                    def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
+                    if (changes && !changes.isEmpty()) {
                         sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-backend-latest"
                         sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest"
                         sh "docker tag ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-${BUILD_NUMBER} ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-latest"
@@ -75,20 +78,19 @@ pipeline {
                             sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-frontend-latest"
                             sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/partha-ecr:task-nginx-latest"
                         }
+                    } else {
+                        echo "No Dockerfile changes detected, skipping ECR push"
                     }
-                } else {
-                    echo "No Dockerfile changes detected, skipping ECR push"
                 }
             }
         }
     }
     post {
         always {
-            // Selective cleanup: keep running containers
-            sh "docker system prune -f || true"  // Remove unused images/volumes, keep running containers
+            sh "docker system prune -f || true"  // Remove unused images, keep running containers
             sh "docker-compose logs > compose.log 2>&1 || true"
             archiveArtifacts artifacts: 'compose.log', allowEmptyArchive: true
-            sh 'rm -f compose.log'
+            sh "rm -f compose.log"
         }
         success {
             echo "Deploy succeeded for Task manager project - ${BRANCH_NAME}"
