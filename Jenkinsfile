@@ -43,7 +43,7 @@ pipeline {
             steps {
                 script {
                     // Load and execute Jenkinsfile.functions from the cloned repo
-                    def pipelineScript = load "${WORKSPACE_DIR}/Jenkinsfile.functions"
+                    def pipelineScript = load "Jenkinsfile.functions"
                     pipelineScript.runPipeline()
                 }
             }
