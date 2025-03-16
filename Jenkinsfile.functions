@@ -7,14 +7,9 @@ def checkDockerFileChanges() {
                 def changes = sh(script: "git diff --name-only ${lastCommit} HEAD | grep -E 'backend/Dockerfile|frontend/Dockerfile|nginx/Dockerfile' || true", returnStdout: true).trim()
                 if (changes && !changes.isEmpty()) {
                     echo "Dockerfile changes detected: ${changes}"
-                    env.DOCKERFILE_CHANGES = 'true'
                 } else {
                     echo "No Dockerfile changes detected"
-                    env.DOCKERFILE_CHANGES = 'false'
                 }
-            }
-            withEnv(["DOCKERFILE_CHANGES=${env.DOCKERFILE_CHANGES}"]) {
-                echo "DOCKERFILE_CHANGES is now: ${env.DOCKERFILE_CHANGES}"
             }
         }
     }
