@@ -15,5 +15,5 @@ variable "api_gateway_name" {
 
 variable "deployment_id" {
   description = "Unique identifier for the deployment to avoid naming conflicts"
-  default     = "default"
+  default     = "testing"
 }
