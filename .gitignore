@@ -1,7 +1,47 @@
+# Ignore Terraform files and directories
 .terraform/
 terraform.tfstate
 terraform.tfstate.backup
+*.tfplan
 *.tfvars
+crash.log
+
+# Ignore Lambda function zip file
+lambda_function.zip
+
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# Ignore directories and files for Google Apps Script (if any build artifacts exist)
+google_apps_script/
+
+# Ignore local environment override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore IDE/editor directories (e.g., Visual Studio Code, IntelliJ, etc.)
+.idea/
+.vscode/
+
+# Ignore system files (e.g., macOS, Windows)
+.DS_Store
+Thumbs.db
+
+# Ignore temporary files
+*.swp
+*~
+
+# Ignore sensitive credential files
+*.pem
+*.key
+*.pub
+
+# Ignore backend state files (e.g., for Terraform backend)
+backend.tfstate
 
 # Logs
 logs

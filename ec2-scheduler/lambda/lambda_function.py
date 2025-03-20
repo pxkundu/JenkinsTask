@@ -21,7 +21,8 @@ def list_ec2_instances():
                     'InstanceId': instance['InstanceId'],
                     'Name': name,
                     'Region': region,
-                    'State': instance['State']['Name']  # Add instance state (e.g., 'running', 'stopped')
+                    'State': instance['State']['Name'],  # Instance state (e.g., 'running', 'stopped')
+                    'InstanceType': instance['InstanceType']  # Add instance type (e.g., 't2.micro')
                 })
     return instances
 
