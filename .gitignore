@@ -43,6 +43,9 @@ Thumbs.db
 # Ignore backend state files (e.g., for Terraform backend)
 backend.tfstate
 
+# Ignore Terraform lock file
+.terraform.lock.hcl
+
 # Logs
 logs
 *.log

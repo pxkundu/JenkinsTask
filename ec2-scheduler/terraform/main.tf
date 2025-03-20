@@ -1,6 +1,6 @@
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_role" {
-  name = "partha-ec2-scheduler-lambda-role"
+  name = "partha-ec2-scheduler-lambda-role-${var.deployment_id}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -18,7 +18,7 @@ resource "aws_iam_role" "lambda_role" {
 
 # IAM Policy for Lambda (EC2 permissions and CloudWatch Logs)
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "partha-ec2-scheduler-lambda-policy"
+  name        = "partha-ec2-scheduler-lambda-policy-${var.deployment_id}"
   description = "Policy for Lambda to manage EC2 instances and write logs"
 
   policy = jsonencode({
@@ -56,7 +56,7 @@ resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
 # Lambda Function
 resource "aws_lambda_function" "ec2_scheduler_lambda" {
   filename         = "../lambda_function.zip"
-  function_name    = var.lambda_function_name
+  function_name    = "${var.lambda_function_name}-${var.deployment_id}"
   role             = aws_iam_role.lambda_role.arn
   handler          = "lambda_function.lambda_handler"
   runtime          = "python3.9"
@@ -68,7 +68,7 @@ resource "aws_lambda_function" "ec2_scheduler_lambda" {
 
 # API Gateway
 resource "aws_api_gateway_rest_api" "ec2_scheduler_api" {
-  name        = var.api_gateway_name
+  name        = "${var.api_gateway_name}-${var.deployment_id}"
   description = "API Gateway for EC2 Scheduler"
 }
 

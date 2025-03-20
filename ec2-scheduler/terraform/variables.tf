@@ -12,3 +12,8 @@ variable "api_gateway_name" {
   description = "Partha API Gateway"
   default     = "partha-ec2-scheduler-api"
 }
+
+variable "deployment_id" {
+  description = "Unique identifier for the deployment to avoid naming conflicts"
+  default     = "default"
+}
