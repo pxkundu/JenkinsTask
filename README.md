@@ -8,46 +8,38 @@ This project automates the starting and stopping of EC2 instances based on prede
 
 ---
 
-## Step 1: Project Initialization and Folder Structure Setup
-
-### Objective
-Set up a local project directory to organize code, configuration files, and documentation.
-
-### Steps
-1. **Create a Project Directory**:
+## Step 1: Project Repo clone
+**Clone Repo**:
    - Open a terminal (e.g., Command Prompt, Terminal, or VS Code Terminal).
-   - Create a new directory named `ec2-automation`:
      ```bash
-     mkdir ec2-automation
-     cd ec2-automation
+     git clone [<THIS REPO URL>](https://github.com/pxkundu/JenkinsTask.git)
+     Checkout to [<THIS BRANCH>](https://github.com/pxkundu/JenkinsTask/tree/feature/AWS-account-automation)
      ```
 
-2. **Initialize Git (Optional)**:
-   - If you want version control, initialize a Git repository:
-     ```bash
-     git init
-     ```
-
-3. **Create Folder Structure**:
-   - Organize the project into subdirectories for Terraform, Google Apps Script, and documentation:
-     ```bash
-     mkdir terraform google-scripts docs
-     ```
-
-4. **Add a README**:
-   - Create a `README.md` file to describe the project:
-     ```bash
-     echo "# EC2 Start/Stop Automation" > README.md
-     echo "Automates EC2 instance management with Google Sheets and AWS." >> README.md
-     ```
-
-### Resulting Structure
+### Project Folder Structure
 ```
-ec2-automation/
-├── terraform/         # Terraform configuration files
-├── google-scripts/    # Google Apps Script files
-├── docs/             # Documentation
-└── README.md         # Project overview
+JenkinsTask/
+├── lambda/
+│   ├── main.py
+│   └── requirements.txt
+├── terraform/
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── provider.tf
+│   ├── lambda-ec2.zip  (generated)
+│   └── modules/
+│       ├── lambda/
+│       │   ├── main.tf
+│       │   ├── variables.tf
+│       │   └── outputs.tf
+│       └── api_gateway/
+│           ├── main.tf
+│           ├── variables.tf
+│           └── outputs.tf
+├── script.gs
+├── .gitignore
+└── README.md
 ```
 
 ---
