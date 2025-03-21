@@ -891,11 +891,3 @@ Ensure all features work as expected.
 
 ## Conclusion
 This setup provides a fully automated EC2 management system with shift-based scheduling, Gmail notifications, and cost tracking, all integrated via Google Sheets. The project leverages AWS for infrastructure, Terraform for provisioning, and Google Apps Script for orchestration, making it both scalable and cost-effective.
-
-Save this documentation in `docs/setup.md` for future reference:
-```bash
-echo "# EC2 Start/Stop Automation Setup" > docs/setup.md
-# Copy-paste this content into docs/setup.md
-```
-
-Let me know if you need further clarification or additional steps!
