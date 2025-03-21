@@ -71,6 +71,29 @@ resource "aws_api_gateway_integration" "stop_post" {
   uri                     = var.lambda_arn
 }
 
+# Resource for /tag (POST) - New
+resource "aws_api_gateway_resource" "tag" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  parent_id   = aws_api_gateway_rest_api.this.root_resource_id
+  path_part   = "tag"
+}
+
+resource "aws_api_gateway_method" "tag_post" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.tag.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "tag_post" {
+  rest_api_id             = aws_api_gateway_rest_api.this.id
+  resource_id             = aws_api_gateway_resource.tag.id
+  http_method             = aws_api_gateway_method.tag_post.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.lambda_arn
+}
+
 resource "aws_lambda_permission" "this" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -84,7 +107,8 @@ resource "aws_api_gateway_deployment" "this" {
   depends_on  = [
     aws_api_gateway_integration.instances_get,
     aws_api_gateway_integration.start_post,
-    aws_api_gateway_integration.stop_post
+    aws_api_gateway_integration.stop_post,
+    aws_api_gateway_integration.tag_post  # Added dependency for /tag
   ]
   triggers = {
     redeployment = sha1(jsonencode([
@@ -96,7 +120,10 @@ resource "aws_api_gateway_deployment" "this" {
       aws_api_gateway_integration.start_post.id,
       aws_api_gateway_resource.stop.id,
       aws_api_gateway_method.stop_post.id,
-      aws_api_gateway_integration.stop_post.id
+      aws_api_gateway_integration.stop_post.id,
+      aws_api_gateway_resource.tag.id,           # Added for /tag
+      aws_api_gateway_method.tag_post.id,        # Added for /tag
+      aws_api_gateway_integration.tag_post.id    # Added for /tag
     ]))
   }
 

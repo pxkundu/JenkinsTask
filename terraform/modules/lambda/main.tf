@@ -20,7 +20,9 @@ resource "aws_iam_role_policy" "lambda_policy" {
         Action   = [
           "ec2:DescribeInstances",
           "ec2:StartInstances",  # Added for start action
-          "ec2:StopInstances"    # Added for stop action
+          "ec2:StopInstances",   # Added for stop action
+          "ec2:CreateTags",      # Added for tagging
+          "ec2:DescribeTags"     # Added for debugging (optional)
         ]
         Resource = "*"
       },
