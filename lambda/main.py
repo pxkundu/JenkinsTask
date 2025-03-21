@@ -2,13 +2,11 @@ import json
 import boto3
 import logging
 
-# Configure logging for CloudWatch
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
     ec2_client = boto3.client('ec2')
-    
     logger.info(f"Event received: {json.dumps(event, indent=2)}")
     
     try:
@@ -34,30 +32,35 @@ def lambda_handler(event, context):
         
         elif event.get('httpMethod') == 'POST':
             body = json.loads(event.get('body', '{}'))
-            instance_id = body.get('instanceId')
             action = event['path'].split('/')[-1]
+            # Handle both single instanceId and array instanceIds
+            instance_ids = body.get('instanceIds', [])
+            if not instance_ids and body.get('instanceId'):
+                instance_ids = [body.get('instanceId')]
+            # Filter out falsy values (e.g., None, empty string)
+            instance_ids = [id for id in instance_ids if id]
             
-            logger.info(f"Handling POST request: Action={action}, InstanceID={instance_id}")
+            logger.info(f"Handling POST request: Action={action}, InstanceIDs={instance_ids}")
             
-            if not instance_id or action not in ['start', 'stop']:
-                logger.error(f"Validation failed: InstanceID={instance_id}, Action={action}")
+            if not instance_ids or action not in ['start', 'stop']:
+                logger.error(f"Validation failed: InstanceIDs={instance_ids}, Action={action}")
                 return {
                     'statusCode': 400,
-                    'body': json.dumps({'error': 'Missing instanceId or invalid action'})
+                    'body': json.dumps({'error': 'Missing instanceIds or invalid action'})
                 }
             
             if action == 'start':
-                logger.info(f"Starting instance: {instance_id}")
-                ec2_client.start_instances(InstanceIds=[instance_id])
-                logger.info(f"Successfully started instance: {instance_id}")
+                logger.info(f"Starting instances: {instance_ids}")
+                ec2_client.start_instances(InstanceIds=instance_ids)
+                logger.info(f"Successfully started instances: {instance_ids}")
             elif action == 'stop':
-                logger.info(f"Stopping instance: {instance_id}")
-                ec2_client.stop_instances(InstanceIds=[instance_id])
-                logger.info(f"Successfully stopped instance: {instance_id}")
+                logger.info(f"Stopping instances: {instance_ids}")
+                ec2_client.stop_instances(InstanceIds=instance_ids)
+                logger.info(f"Successfully stopped instances: {instance_ids}")
             
             return {
                 'statusCode': 200,
-                'body': json.dumps({'message': f'{action.capitalize()}ed instance {instance_id}'})
+                'body': json.dumps({'message': f'{action.capitalize()}ed instances {instance_ids}'})
             }
     
     except Exception as e:
