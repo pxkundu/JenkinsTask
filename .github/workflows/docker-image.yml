@@ -23,6 +23,12 @@ jobs:
           sudo service docker start
           sudo usermod -aG docker $USER
 
+      # Install Node.js and npm
+      - name: Install Node.js
+        run: |
+          curl -sL https://rpm.nodesource.com/setup_16.x | sudo -E bash -
+          sudo yum install -y nodejs
+
       # Install backend dependencies and run tests
       - name: Test Backend
         working-directory: ./backend
