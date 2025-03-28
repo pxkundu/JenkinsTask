@@ -39,13 +39,13 @@ jobs:
       - name: Build Backend Docker Image
         working-directory: ./backend
         run: |
-          docker build -t jenkins-task-backend:latest .
+          sudo su && docker build -t jenkins-task-backend:latest .
 
       # Build Docker image for frontend
       - name: Build Frontend Docker Image
         working-directory: ./frontend
         run: |
-          docker build -t jenkins-task-frontend:latest .
+          sudo su && docker build -t jenkins-task-frontend:latest .
 
       # Test the full stack with docker-compose
       - name: Test Docker Compose Stack
