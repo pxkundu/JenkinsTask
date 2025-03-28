@@ -35,18 +35,7 @@ jobs:
         working-directory: ./frontend
         run: |
           npm install
-      # Build Docker image for backend
-      - name: Build Backend Docker Image
-        working-directory: ./backend
-        run: |
-          sudo su && docker build -t jenkins-task-backend:latest .
-
-      # Build Docker image for frontend
-      - name: Build Frontend Docker Image
-        working-directory: ./frontend
-        run: |
-          sudo su && docker build -t jenkins-task-frontend:latest .
-
+      
       # Test the full stack with docker-compose
       - name: Test Docker Compose Stack
         run: |
