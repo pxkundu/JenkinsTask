@@ -65,10 +65,3 @@ jobs:
     env:
       COMPOSE_DOCKER_CLI_BUILD: 1
       DOCKER_BUILDKIT: 1
-    # Optional: Clean up after the job
-    if: always()
-    steps:
-      - name: Cleanup Docker
-        run: |
-          docker-compose -f docker-compose.yml down --volumes
-          docker system prune -f
