@@ -8,7 +8,7 @@ This project is a simple SaaS Task Manager application built with a **React.js f
 
 ## Project Folder Structure
 ```
-~/saas-task-manager/
+~/JenkinsTask/
 ├── backend/                # Backend Node.js/Express API
 │   ├── Dockerfile          # Dockerfile for building the backend image
 │   ├── app.js              # Main backend application file (API logic)
