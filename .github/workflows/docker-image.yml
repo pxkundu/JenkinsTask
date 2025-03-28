@@ -19,15 +19,7 @@ jobs:
       # Set up Docker (if not already installed on the EC2 instance)
       - name: Set up Docker
         run: |
-          sudo yum install -y docker
-          sudo service docker start
           sudo usermod -aG docker ec2-user  # Add ec2-user (or your user) to the docker group
-
-      # Install Node.js and npm
-      - name: Install Node.js
-        run: |
-          curl -sL https://rpm.nodesource.com/setup_16.x | sudo -E bash -
-          sudo yum install -y nodejs
 
       # Install backend dependencies and run tests
       - name: Test Backend
