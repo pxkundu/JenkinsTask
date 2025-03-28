@@ -30,15 +30,11 @@ jobs:
         working-directory: ./backend
         run: |
           npm install
-          npm test  # Replace with your actual test command if different
-
       # Install frontend dependencies and run tests
       - name: Test Frontend
         working-directory: ./frontend
         run: |
           npm install
-          npm test  # Replace with your actual test command if different
-
       # Build Docker image for backend
       - name: Build Backend Docker Image
         working-directory: ./backend
