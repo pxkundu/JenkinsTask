@@ -10,36 +10,30 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: self-hosted  # Or [self-hosted, amazon-linux-2] if you added a specific label
+    runs-on: self-hosted  # Or [self-hosted, amazon-linux-2] if labeled
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Set up Docker (if not already installed on the EC2 instance)
-      - name: Set up Docker
-        run: |
-          sudo usermod -aG docker ec2-user  # Add ec2-user (or your user) to the docker group
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'  # Adjust as needed
 
-      # Install backend dependencies and run tests
-      - name: Test Backend
+      - name: Install Backend Dependencies
         working-directory: ./backend
-        run: |
-          npm install
+        run: npm install
 
-      # Install frontend dependencies and run tests
-      - name: Test Frontend
+      - name: Install Frontend Dependencies
         working-directory: ./frontend
-        run: |
-          npm install
+        run: npm install
 
-      # Test the full stack with docker-compose
       - name: Test Docker Compose Stack
+        working-directory: ./
         run: |
-          docker-compose down || true
-          docker-compose up -d --build
-
-    # Ensure containers are cleaned up even if the job fails
+          docker-compose -f docker-compose.yml up -d
+          docker-compose -f docker-compose.yml down
     env:
       COMPOSE_DOCKER_CLI_BUILD: 1
       DOCKER_BUILDKIT: 1
