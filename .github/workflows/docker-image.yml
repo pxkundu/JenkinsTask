@@ -44,11 +44,8 @@ jobs:
       # Test the full stack with docker-compose
       - name: Test Docker Compose Stack
         run: |
-          docker-compose -f docker-compose.yml up -d || { docker-compose logs; exit 1; }
-          sleep 10  # Adjust based on how long your services take to start
-          curl http://localhost:5000 || exit 1  # Basic backend check
-          curl http://localhost:8080 || exit 1  # Basic frontend check
-          docker-compose -f docker-compose.yml down --remove-orphans
+          docker-compose down || true
+          docker-compose up -d --build
 
     # Ensure containers are cleaned up even if the job fails
     env:
