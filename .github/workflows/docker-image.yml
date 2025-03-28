@@ -1,6 +1,5 @@
 name: CI Pipeline
 
-# Trigger the workflow on push or pull request to main branch
 on:
   push:
     branches:
@@ -11,40 +10,39 @@ on:
 
 jobs:
   build-and-test:
-    # Use your self-hosted runner (adjust label as needed)
     runs-on: self-hosted  # Or [self-hosted, amazon-linux-2] if you added a specific label
 
     steps:
-      # Checkout the repository code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Set up Node.js (for running tests outside Docker, if needed)
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '16'  # Adjust to match your backend/frontend Node.js version
+      # Set up Docker (if not already installed on the EC2 instance)
+      - name: Set up Docker
+        run: |
+          sudo yum install -y docker
+          sudo service docker start
+          sudo usermod -aG docker $USER
 
       # Install backend dependencies and run tests
       - name: Test Backend
         working-directory: ./backend
         run: |
           npm install
+
       # Install frontend dependencies and run tests
       - name: Test Frontend
         working-directory: ./frontend
         run: |
           npm install
-      
+
       # Test the full stack with docker-compose
       - name: Test Docker Compose Stack
         run: |
-          docker-compose -f docker-compose.yml up -d
-          # Add health check or test commands here (e.g., curl backend API)
-          sleep 10  # Wait for services to start (adjust as needed)
+          docker-compose -f docker-compose.yml up -d || { docker-compose logs; exit 1; }
+          sleep 10  # Adjust based on how long your services take to start
           curl http://localhost:5000 || exit 1  # Basic backend check
           curl http://localhost:8080 || exit 1  # Basic frontend check
-          docker-compose -f docker-compose.yml down
+          docker-compose -f docker-compose.yml down --remove-orphans
 
     # Ensure containers are cleaned up even if the job fails
     env:
