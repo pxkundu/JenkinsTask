@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo yum install -y docker
           sudo service docker start
-          sudo usermod -aG docker $USER
+          sudo usermod -aG docker ec2-user  # Add ec2-user (or your user) to the docker group
 
       # Install Node.js and npm
       - name: Install Node.js
