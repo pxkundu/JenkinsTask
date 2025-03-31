@@ -21,17 +21,11 @@ jobs:
         with:
           node-version: '16'  # Adjust as needed
 
-      - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: npm install
-
-      - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm install
-
       - name: Test Docker Compose Stack
         working-directory: ./
         run: |
+          docker-compose -f docker-compose.yml down
+          docker rmi -f $(docker images -q)
           docker-compose -f docker-compose.yml up -d
     env:
       COMPOSE_DOCKER_CLI_BUILD: 1
