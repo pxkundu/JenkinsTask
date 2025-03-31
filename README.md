@@ -1,3 +1,5 @@
+[![CI Pipeline](https://github.com/pxkundu/JenkinsTask/actions/workflows/docker-image.yml/badge.svg)](https://github.com/pxkundu/JenkinsTask/actions/workflows/docker-image.yml)
+
 # SaaS Task Manager - Dockerized Project 
 ### CHECKOUT TO Development, Staging, feature/AWS-account-automation Branch for more features
 
