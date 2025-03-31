@@ -11,14 +11,14 @@ function App() {
   }, []);
 
   const fetchTasks = () => {
-    axios.get('/api/tasks')  // Relative URL, resolves to http://partha.snehith-dev.com/api/tasks
+    axios.get(':5000/api/tasks')  // Relative URL, resolves to http://partha.snehith-dev.com/api/tasks
       .then(res => setTasks(res.data))
       .catch(err => console.error('Fetch error:', err));
   };
 
   const addTask = () => {
     if (newTask.trim()) {
-      axios.post('/api/tasks', { title: newTask })
+      axios.post(':5000/api/tasks', { title: newTask })
         .then(() => {
           setNewTask('');
           fetchTasks();
@@ -28,13 +28,13 @@ function App() {
   };
 
   const updateTask = (id, title) => {
-    axios.put(`/api/tasks/${id}`, { title })
+    axios.put(`:5000/api/tasks/${id}`, { title })
       .then(fetchTasks)
       .catch(err => console.error('Update error:', err));
   };
 
   const deleteTask = (id) => {
-    axios.delete(`/api/tasks/${id}`)
+    axios.delete(`:5000/api/tasks/${id}`)
       .then(fetchTasks)
       .catch(err => console.error('Delete error:', err));
   };
