@@ -33,7 +33,6 @@ jobs:
         working-directory: ./
         run: |
           docker-compose -f docker-compose.yml up -d
-          docker-compose -f docker-compose.yml down
     env:
       COMPOSE_DOCKER_CLI_BUILD: 1
       DOCKER_BUILDKIT: 1
