@@ -5,7 +5,9 @@ Deploys an EC2 instance with Docker and Nginx using a Dockerfile and setup scrip
 - AWS CLI configured with credentials.
 - Existing VPC, Subnet, Security Group (with HTTP:80 inbound), and Key Pair in AWS Console.
 
-## Project folder structure
+## Project Structure
+
+```
 .
 ├── README.md                # Project documentation (this file)
 ├── env/                     # Environment-specific configurations
@@ -26,7 +28,7 @@ Deploys an EC2 instance with Docker and Nginx using a Dockerfile and setup scrip
         ├── main.tf          # EC2 resource definitions
         ├── outputs.tf       # EC2 module outputs
         └── variables.tf     # EC2 module variables
-
+```
 ## Usage
 1. Update `env/dev/terraform.tfvars` with your existing subnet_id, security_group_id, and key_name.
 2. Navigate to `env/dev/` and deploy:
