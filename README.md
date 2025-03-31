@@ -5,10 +5,31 @@ Deploys an EC2 instance with Docker and Nginx using a Dockerfile and setup scrip
 - AWS CLI configured with credentials.
 - Existing VPC, Subnet, Security Group (with HTTP:80 inbound), and Key Pair in AWS Console.
 
+## Project folder structure
+.
+├── README.md                # Project documentation (this file)
+├── env/                     # Environment-specific configurations
+│   ├── dev/                 # Development environment configuration
+│   │   ├── main.tf          # Core Terraform configuration for dev
+│   │   ├── outputs.tf       # Output definitions for dev
+│   │   ├── terraform.tfvars # Variable values specific to dev
+│   │   └── variables.tf     # Variable definitions for dev
+│   └── stage/               # Staging environment configuration
+├── files/                   # Static files and scripts used in the infrastructure
+│   ├── Dockerfile           # Docker configuration file
+│   ├── index.html           # Sample HTML file (e.g., for a web server)
+│   ├── nginx.conf           # NGINX configuration file
+│   ├── setup.sh             # Setup script for provisioning
+│   └── user_data.sh         # User data script for EC2 instances
+└── modules/                 # Reusable Terraform modules
+    └── ec2/                 # EC2-specific module
+        ├── main.tf          # EC2 resource definitions
+        ├── outputs.tf       # EC2 module outputs
+        └── variables.tf     # EC2 module variables
+
 ## Usage
 1. Update `env/dev/terraform.tfvars` with your existing subnet_id, security_group_id, and key_name.
-2. Run `./generate_project.sh` to create the structure.
-3. Navigate to `env/dev/` and deploy:
+2. Navigate to `env/dev/` and deploy:
    ```bash
    terraform init
    terraform apply
