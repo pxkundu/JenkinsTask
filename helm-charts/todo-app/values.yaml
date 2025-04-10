@@ -35,7 +35,7 @@ service:
     port: 3000
 
 ingress:
-  enabled: true
+  enabled: false
   host: todo.example.com
   path: "/"
   pathType: Prefix
