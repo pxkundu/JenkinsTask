@@ -5,12 +5,12 @@ version: 0.1.0
 appVersion: "1.25"
 type: application
 maintainers:
-  - name: Partha-App
-    email: partha.kundu.tc@gmail.com
+  - name: Partha Sarathi
+    email: pxkundu2@shockers.wichita.edu
 keywords:
   - nginx
   - webserver
   - learning
-home: https://github.com/yourusername/your-repo
+home: https://github.com/pxkundu/JenkinsTask
 sources:
-  - https://github.com/yourusername/your-repo/tree/main/helm-charts/custom-nginx
+  - https://github.com/pxkundu/JenkinsTask/tree/feature/kube-helm-argocd/helm-charts/custom-nginx
