@@ -12,7 +12,7 @@ service:
 
 ingress:
   enabled: true
-  host: "18.207.111.44"
+  host: "www.example.com"
   path: "/"
   pathType: Prefix
 
