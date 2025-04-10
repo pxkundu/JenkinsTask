@@ -10,6 +10,12 @@ service:
   type: ClusterIP
   port: 80
 
+ingress:
+  enabled: false
+  host: "www.example.com"
+  path: "/"
+  pathType: Prefix
+
 resources:
   limits:
     cpu: "0.5"
