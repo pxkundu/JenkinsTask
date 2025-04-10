@@ -1,0 +1,41 @@
+replicaCount: 1
+
+frontend:
+  image:
+    repository: pxkundu/todo-frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "0.1"
+      memory: "128Mi"
+    limits:
+      cpu: "0.5"
+      memory: "512Mi"
+
+backend:
+  image:
+    repository: pxkundu/todo-backend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: "0.1"
+      memory: "128Mi"
+    limits:
+      cpu: "0.5"
+      memory: "512Mi"
+
+service:
+  frontend:
+    type: ClusterIP
+    port: 80
+  backend:
+    type: ClusterIP
+    port: 3000
+
+ingress:
+  enabled: false
+  host: todo.example.com
+  path: "/"
+  pathType: Prefix
