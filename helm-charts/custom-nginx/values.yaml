@@ -1,5 +1,5 @@
 # Default values for custom-nginx chart
-replicaCount: 2
+replicaCount: 1
 
 image:
   repository: nginx
@@ -12,7 +12,7 @@ service:
 
 ingress:
   enabled: true
-  host: "nginx.example.com"
+  host: "18.207.111.44"
   path: "/"
   pathType: Prefix
 
