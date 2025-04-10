@@ -35,7 +35,11 @@ service:
     port: 3000
 
 ingress:
-  enabled: false
+  enabled: true
   host: todo.example.com
   path: "/"
   pathType: Prefix
+
+serviceAccount:
+  create: true
+  name: "todo-app-sa"
