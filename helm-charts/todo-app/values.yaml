@@ -40,6 +40,8 @@ ingress:
   path: "/"
   pathType: Prefix
 
-serviceAccount:
-  create: true
-  name: "todo-app-sa"
+autoscaling:
+  enabled: false  # Set to true to enable HPA
+  minReplicas: 1
+  maxReplicas: 3  # Adjust based on your t2.medium capacity
+  targetCPUUtilizationPercentage: 80
