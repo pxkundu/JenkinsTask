@@ -28,22 +28,22 @@ backend:
 
 service:
   frontend:
-    type: NodePort
+    type: ClusterIP  # Changed from NodePort
     port: 80
-    nodePort: 30080  # Optional: Specify a port in 30000-32767
   backend:
-    type: NodePort
+    type: ClusterIP  # Changed from NodePort
     port: 3000
-    nodePort: 30300  # Optional: Specify a port
 
 ingress:
-  enabled: false
+  enabled: true
   host: todo.example.com
   path: "/"
   pathType: Prefix
+  annotations:
+    kubernetes.io/ingress.class: nginx
 
 autoscaling:
-  enabled: false  # Set to true to enable HPA
+  enabled: false  # Optional: Enable later for scaling demo
   minReplicas: 1
-  maxReplicas: 3  # Adjust based on your t2.medium capacity
+  maxReplicas: 3
   targetCPUUtilizationPercentage: 80
