@@ -94,7 +94,7 @@ JenkinsTask/
   - Triggers on Git push to `main`.
 
 - **`README.md`**:
-  - Documentation (likely incomplete in your POC).
+  - Documentation for both application set up and DevOps Setup docs.
 
 - **`docker-compose.yml`**:
   - Optional file for local development, linking frontend and backend containers. Not used in Kubernetes deployment.
@@ -114,7 +114,7 @@ JenkinsTask/
   - Builds a Node.js image, exposing port 3000.
 
 - **`app.js`**:
-  - Likely an Express server:
+  - Sample Express server:
     ```javascript
     const express = require('express');
     const fs = require('fs');
