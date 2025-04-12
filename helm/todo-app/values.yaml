@@ -28,8 +28,9 @@ backend:
 
 service:
   frontend:
-    type: ClusterIP
+    type: NodePort
     port: 80
+    nodePort: 30080  # Optional: Specify a fixed NodePort
   backend:
     type: ClusterIP
     port: 3000
