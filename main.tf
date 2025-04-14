@@ -24,7 +24,7 @@ resource "aws_security_group" "k8_worker_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["${aws_instance.k8_master.public_ip}/32"]
+    cidr_blocks = ["3.83.26.46/32"]
   }
 
   # Allow Kubernetes API server communication (port 6443)
