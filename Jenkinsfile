@@ -22,7 +22,7 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                 sh 'terraform apply -auto-approve'
+                 sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /root/.ssh/k8-worker-key.pub)"'
             }
         }
 
