@@ -13,6 +13,11 @@ data "aws_subnet" "default" {
   availability_zone = "us-east-1a"  # Replace with your AZ
 }
 
+# Get the public IP of k8-master (jenkins-k8-master)
+data "external" "k8_master_ip" {
+  program = ["bash", "-c", "echo '{\"public_ip\": \"'$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)'\"}'"]
+}
+
 # Security group for k8-worker
 resource "aws_security_group" "k8_worker_sg" {
   name        = "k8-worker-sg"
@@ -64,14 +69,9 @@ resource "aws_security_group" "k8_worker_sg" {
   }
 }
 
-# Get the public IP of k8-master (jenkins-k8-master)
-data "external" "k8_master_ip" {
-  program = ["bash", "-c", "echo '{\"public_ip\": \"'$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)'\"}'"]
-}
-
 # EC2 instance for k8-worker
 resource "aws_instance" "k8_worker" {
-  ami                    = "ami-0a38b8c18f189761a"  # Replace with your AMI ID
+  ami                    = "ami-0a38b8c18f189761a"  # Amazon Linux 2 AMI for us-east-1 (update if needed)
   instance_type          = "t2.micro"            # 2 vCPUs, 4GB RAM
   subnet_id              = data.aws_subnet.default.id
   vpc_security_group_ids = [aws_security_group.k8_worker_sg.id]
@@ -119,9 +119,9 @@ resource "aws_instance" "k8_worker" {
 }
 
 # SSH key pair for k8-worker
-resource "aws_key_pair" "k8_worker_key_partha" {
-  key_name   = "k8-worker-key-partha"
-  public_key = file("~/.ssh/k8-worker-key-partha.pub")  # Path to the public key created earlier
+resource "aws_key_pair" "k8_worker_key" {
+  key_name   = "k8-worker-key"
+  public_key = file("${path.module}/k8-worker-key.pub")  # Reference the key in the k8s-terraform directory
 }
 
 # Output the public IP of k8-worker
