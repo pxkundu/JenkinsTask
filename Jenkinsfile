@@ -16,17 +16,13 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                dir('k8s-terraform') {
-                    sh 'terraform init'
-                }
+                sh 'terraform init'
             }
         }
 
         stage('Terraform Apply') {
             steps {
-                dir('k8s-terraform') {
-                    sh 'terraform apply -auto-approve'
-                }
+                 sh 'terraform apply -auto-approve'
             }
         }
 
@@ -82,14 +78,10 @@ pipeline {
 
     post {
         always {
-            dir('k8s-terraform') {
                 sh 'terraform output'
-            }
         }
         failure {
-            dir('k8s-terraform') {
                 sh 'terraform destroy -auto-approve'
-            }
         }
     }
 }
