@@ -1,3 +1,9 @@
+# Variable for the SSH public key
+   variable "ssh_public_key" {
+     description = "The SSH public key to use for the k8-worker instance"
+     type        = string
+   }
+
 provider "aws" {
   region = "us-east-1"  # Replace with your region
 }
@@ -119,12 +125,12 @@ resource "aws_instance" "k8_worker" {
 }
 
 # SSH key pair for k8-worker
-resource "aws_key_pair" "k8_worker_key" {
-  key_name   = "k8-worker-key"
-  public_key = file("${path.module}/k8-worker-key.pub")  # Reference the key in the k8s-terraform directory
-}
+   resource "aws_key_pair" "k8_worker_key" {
+     key_name   = "k8-worker-key"
+     public_key = var.ssh_public_key  # Use the variable instead of a file
+   }
 
-# Output the public IP of k8-worker
-output "k8_worker_public_ip" {
-  value = aws_instance.k8_worker.public_ip
-}
+   # Output the public IP of k8-worker
+   output "k8_worker_public_ip" {
+     value = aws_instance.k8_worker.public_ip
+   }
