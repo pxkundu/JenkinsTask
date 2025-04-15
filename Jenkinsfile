@@ -71,8 +71,22 @@ pipeline {
                     // Debug: Checkpoint to confirm pipeline proceeds
                     echo "Checkpoint: Proceeding to write SSH key file..."
                     
-                    // Write SSH key to a temporary file
-                    writeFile file: 'k8-worker-key-partha-1', text: env.K8_WORKER_SSH_KEY
+                    // Debug: Check workspace permissions and disk space
+                    sh 'pwd'
+                    sh 'ls -ld .'
+                    sh 'df -h .'
+                    
+                    // Debug: Inspect the K8_WORKER_SSH_KEY variable
+                    echo "K8_WORKER_SSH_KEY length: ${env.K8_WORKER_SSH_KEY?.length()}"
+                    echo "K8_WORKER_SSH_KEY first 50 chars: ${env.K8_WORKER_SSH_KEY?.substring(0, Math.min(50, env.K8_WORKER_SSH_KEY?.length() ?: 0))}"
+                    
+                    // Write SSH key to a temporary file with error handling
+                    try {
+                        writeFile file: 'k8-worker-key-partha-1', text: env.K8_WORKER_SSH_KEY
+                        echo "Checkpoint: SSH key file written successfully"
+                    } catch (Exception e) {
+                        error "Failed to write SSH key file: ${e.message}"
+                    }
                     
                     // Debug: Inspect the key file
                     sh 'ls -l k8-worker-key-partha-1'
@@ -109,6 +123,7 @@ pipeline {
                 }
             }
         }
+
 
         stage('Verify Worker Node') {
             steps {
