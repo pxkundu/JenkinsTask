@@ -91,6 +91,14 @@ pipeline {
                             sleep 10
                         done
 
+                        # Install iproute to provide tc command
+                        echo "Installing iproute for tc command..."
+                        for i in {1..5}; do
+                            sudo yum install -y iproute && break
+                            echo "Retry \$i: yum install iproute failed, waiting 10 seconds..."
+                            sleep 10
+                        done
+
                         # Install containerd as container runtime
                         echo "Installing containerd..."
                         for i in {1..5}; do
@@ -120,10 +128,14 @@ pipeline {
                         sudo modprobe br_netfilter
                         echo 'br_netfilter' | sudo tee /etc/modules-load.d/br_netfilter.conf
 
-                        # Enable IP forwarding
-                        echo "Enabling IP forwarding..."
+                        # Enable IP forwarding and bridge iptables
+                        echo "Enabling IP forwarding and bridge iptables..."
                         sudo sysctl -w net.ipv4.ip_forward=1
-                        echo 'net.ipv4.ip_forward = 1' | sudo tee /etc/sysctl.d/99-kubernetes.conf
+                        sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+                        sudo bash -c 'cat <<EOT > /etc/sysctl.d/99-kubernetes.conf
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOT'
                         sudo sysctl --system
 
                         # Install Kubernetes components
