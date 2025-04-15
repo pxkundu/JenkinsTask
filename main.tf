@@ -19,7 +19,7 @@ resource "aws_security_group" "k8_worker_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["3.83.26.46/32"]  # Allow SSH from k8-master (Jenkins server)
+    cidr_blocks = ["0.0.0.0/0"]  # Allow SSH from all
   }
 
   ingress {
