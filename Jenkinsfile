@@ -22,7 +22,7 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                  sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key.pub)"'
+                  sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha.pub)"'
             }
         }
 
@@ -51,20 +51,20 @@ pipeline {
                     def workerIp = sh(script: 'cd k8s-terraform && terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
                     
                     // Write SSH key to a temporary file
-                    writeFile file: 'k8-worker-key', text: env.K8_WORKER_SSH_KEY
+                    writeFile file: 'k8-worker-key-partha', text: env.K8_WORKER_SSH_KEY
                     
                     // Set permissions for SSH key
-                    sh 'chmod 400 k8-worker-key'
+                    sh 'chmod 400 k8-worker-key-partha'
                     
                     // SSH into k8-worker and run kubeadm join
                     sh """
-                        ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
+                        ssh -i k8-worker-key-partha -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
                         sudo ${KUBEADM_JOIN_CMD}
                         EOF
                     """
                     
                     // Clean up SSH key file
-                    sh 'rm k8-worker-key'
+                    sh 'rm k8-worker-key-partha'
                 }
             }
         }
