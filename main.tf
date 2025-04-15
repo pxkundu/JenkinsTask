@@ -80,44 +80,83 @@ resource "aws_instance" "k8_worker" {
 
   user_data = <<-EOF
               #!/bin/bash
-              # Update system
-              yum update -y
+              # Define log file
+              LOG_FILE="/var/log/user-data.log"
+              exec > >(tee -a $LOG_FILE) 2>&1
+              set -x
 
-              # Install containerd
-              yum install -y containerd
+              echo "Starting user data script at \$(date)"
+
+              # Update system and install basic utilities
+              echo "Updating system..." | tee -a $LOG_FILE
+              for i in {1..5}; do
+                  yum update -y && break
+                  echo "Retry \$i: yum update failed, waiting 10 seconds..." | tee -a $LOG_FILE
+                  sleep 10
+              done
+
+              # Install containerd as container runtime
+              echo "Installing containerd..." | tee -a $LOG_FILE
+              for i in {1..5}; do
+                  yum install -y containerd && break
+                  echo "Retry \$i: yum install containerd failed, waiting 10 seconds..." | tee -a $LOG_FILE
+                  sleep 10
+              done
               systemctl enable containerd
               systemctl start containerd
 
-              # Install Kubernetes components (kubeadm, kubelet, kubectl)
-              cat <<EOT > /etc/yum.repos.d/kubernetes.repo
-              [kubernetes]
-              name=Kubernetes
-              baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
-              enabled=1
-              gpgcheck=1
-              gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
-              EOT
-              # Install components with conflict resolution
-              sudo dnf install -y kubeadm kubelet kubectl --disableexcludes=kubernetes --allowerasing
-      
-              # Start services
-              sudo systemctl enable kubelet
-              sudo systemctl start kubelet || true
-      
-              # Disable swap (kubeadm requirement)
-              sudo swapoff -a
-              sudo sed -i "/swap/d" /etc/fstab
-      
-              # Reset and join the cluster
-              sudo kubeadm reset -f
+              # Configure containerd
+              mkdir -p /etc/containerd
+              containerd config default > /etc/containerd/config.toml
+              sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+              systemctl restart containerd
 
-              # Configure sysctl for Kubernetes networking
-              cat <<EOT > /etc/sysctl.d/k8s.conf
-              net.bridge.bridge-nf-call-iptables  = 1
-              net.bridge.bridge-nf-call-ip6tables = 1
-              net.ipv4.ip_forward                 = 1
-              EOT
+              # Disable SELinux (simplified for learning)
+              setenforce 0
+              sed -i 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+
+              # Disable swap (Kubernetes requirement)
+              swapoff -a
+              sed -i '/swap/d' /etc/fstab
+
+              # Load required kernel modules
+              echo "Loading kernel modules..." | tee -a $LOG_FILE
+              modprobe br_netfilter
+              echo 'br_netfilter' > /etc/modules-load.d/br_netfilter.conf
+
+              # Enable IP forwarding
+              echo "Enabling IP forwarding..." | tee -a $LOG_FILE
+              sysctl -w net.ipv4.ip_forward=1
+              echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-kubernetes.conf
               sysctl --system
+
+              # Install Kubernetes components
+              echo "Installing Kubernetes components..." | tee -a $LOG_FILE
+              cat <<EOT > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+EOT
+
+              for i in {1..5}; do
+                  yum install -y kubelet kubeadm && break
+                  echo "Retry \$i: yum install kubelet kubeadm failed, waiting 10 seconds..." | tee -a $LOG_FILE
+                  sleep 10
+              done
+
+              # Verify kubeadm is installed
+              if ! command -v kubeadm &> /dev/null; then
+                  echo "ERROR: kubeadm installation failed" | tee -a $LOG_FILE
+                  exit 1
+              fi
+
+              systemctl enable kubelet
+              systemctl start kubelet
+
+              echo "User data script completed at \$(date)" | tee -a $LOG_FILE
               EOF
 
   tags = {
