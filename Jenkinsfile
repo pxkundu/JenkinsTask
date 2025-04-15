@@ -73,10 +73,7 @@ pipeline {
                     echo "Worker IP: ${workerIp}"
 
                     // Get k8-worker internal IP (needed for /etc/hosts)
-                    def workerInternalIp = sh(script: "aws ec2 describe-instances --filters 'Name=public-ip-address,Values=${workerIp}' --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text --region us-east-1", returnStdout: true).trim()
-                    if (!workerInternalIp || workerInternalIp =~ /[^0-9.]/) {
-                        error "Failed to retrieve a valid worker internal IP: ${workerInternalIp}"
-                    }
+                    def workerInternalIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
                     echo "Worker Internal IP: ${workerInternalIp}"
 
                     // Test SSH connectivity using the generated private key
