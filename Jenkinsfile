@@ -54,11 +54,8 @@ pipeline {
                     }
                     
                     // Get k8-master public IP using AWS CLI
-                    def instanceId = sh(script: 'curl -s http://169.254.169.254/latest/meta-data/instance-id', returnStdout: true).trim()
-                    if (!instanceId || instanceId =~ /[^a-z0-9-]/) {
-                        error "Failed to retrieve instance ID: ${instanceId}"
-                    }
-                    def masterIp = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].PublicIpAddress' --output text --region us-east-1", returnStdout: true).trim()
+                    
+                    def masterIp = "3.83.26.46"
                     if (!masterIp || masterIp =~ /[^0-9.]/) {
                         error "Failed to retrieve a valid master IP: ${masterIp}"
                     }
