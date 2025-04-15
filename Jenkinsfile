@@ -17,6 +17,8 @@ pipeline {
         stage('Generate SSH Key Pair') {
             steps {
                 script {
+                    // Remove existing key files if they exist
+                    sh 'rm -f k8-worker-key k8-worker-key.pub'
                     // Generate a new SSH key pair in the workspace
                     sh 'ssh-keygen -t rsa -b 2048 -f k8-worker-key -N "" -C "k8-worker-key"'
                     // Set permissions for the private key
