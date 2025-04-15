@@ -64,7 +64,7 @@ pipeline {
                     
                     // SSH into k8-worker and run kubeadm join
                     sh """
-                        ssh -i k8-worker-key-partha -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
+                        ssh -i k8-worker-key-partha-1 -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
                         sudo ${KUBEADM_JOIN_CMD}
                         EOF
                     """
