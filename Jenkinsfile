@@ -1,12 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-//        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')      // Jenkins credential ID for AWS access key
-//        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')  // Jenkins credential ID for AWS secret key
-        K8_WORKER_SSH_KEY     = credentials('k8-worker-ssh-key')     // Jenkins credential ID for SSH private key
-    }
-
     stages {
         stage('Checkout') {
             steps {
@@ -29,44 +23,53 @@ pipeline {
                 }
             }
         }
+
         stage('Terraform Init') {
             steps {
                 sh 'terraform init'
             }
         }
 
-         stage('Terraform Apply') {
+        stage('Terraform Apply') {
             steps {
                 script {
-                    // Use the dynamically generated public key
                     sh 'terraform apply -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
                 }
             }
         }
 
-        
         stage('Get Kubeadm Join Command') {
             steps {
                 script {
                     // Extract kubeadm token using sudo
                     def token = sh(script: 'sudo kubeadm token create', returnStdout: true).trim()
+                    if (!token || token =~ /[^a-z0-9.]/) {
+                        error "Failed to generate a valid kubeadm token: ${token}"
+                    }
                     
                     // Get CA certificate hash using sudo
                     def caHash = sh(script: 'sudo openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed "s/^.* //"', returnStdout: true).trim()
+                    if (!caHash || caHash =~ /[^a-f0-9]/) {
+                        error "Failed to generate a valid CA certificate hash: ${caHash}"
+                    }
                     
-                    // Get k8-master API server endpoint (public IP)
-                    def masterIp = "3.83.26.46"
+                    // Get k8-master public IP using AWS CLI
+                    def instanceId = sh(script: 'curl -s http://169.254.169.254/latest/meta-data/instance-id', returnStdout: true).trim()
+                    if (!instanceId || instanceId =~ /[^a-z0-9-]/) {
+                        error "Failed to retrieve instance ID: ${instanceId}"
+                    }
+                    def masterIp = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].PublicIpAddress' --output text --region us-east-1", returnStdout: true).trim()
+                    if (!masterIp || masterIp =~ /[^0-9.]/) {
+                        error "Failed to retrieve a valid master IP: ${masterIp}"
+                    }
                     
                     // Construct kubeadm join command
                     env.KUBEADM_JOIN_CMD = "kubeadm join ${masterIp}:6443 --token ${token} --discovery-token-ca-cert-hash sha256:${caHash}"
-                    
-                    // Debug: Print the constructed join command
                     echo "KUBEADM_JOIN_CMD: ${env.KUBEADM_JOIN_CMD}"
                 }
             }
         }
 
-        
         stage('Join Worker to Cluster') {
             steps {
                 script {
@@ -77,34 +80,103 @@ pipeline {
                     // Test SSH connectivity using the generated private key
                     sh "ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
 
-                    // Run kubeadm join command
+                    // Set up the worker node and run kubeadm join command
                     sh """
                         ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} << EOF
+                        # Update system and install basic utilities
+                        echo "Updating system..."
+                        for i in {1..5}; do
+                            sudo yum update -y && break
+                            echo "Retry \$i: yum update failed, waiting 10 seconds..."
+                            sleep 10
+                        done
+
+                        # Install containerd as container runtime
+                        echo "Installing containerd..."
+                        for i in {1..5}; do
+                            sudo yum install -y containerd && break
+                            echo "Retry \$i: yum install containerd failed, waiting 10 seconds..."
+                            sleep 10
+                        done
+                        sudo systemctl enable containerd
+                        sudo systemctl start containerd
+
+                        # Configure containerd
+                        sudo mkdir -p /etc/containerd
+                        containerd config default | sudo tee /etc/containerd/config.toml
+                        sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+                        sudo systemctl restart containerd
+
+                        # Disable SELinux (simplified for learning)
+                        sudo setenforce 0
+                        sudo sed -i 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+
+                        # Disable swap (Kubernetes requirement)
+                        sudo swapoff -a
+                        sudo sed -i '/swap/d' /etc/fstab
+
+                        # Load required kernel modules
+                        echo "Loading kernel modules..."
+                        sudo modprobe br_netfilter
+                        echo 'br_netfilter' | sudo tee /etc/modules-load.d/br_netfilter.conf
+
+                        # Enable IP forwarding
+                        echo "Enabling IP forwarding..."
+                        sudo sysctl -w net.ipv4.ip_forward=1
+                        echo 'net.ipv4.ip_forward = 1' | sudo tee /etc/sysctl.d/99-kubernetes.conf
+                        sudo sysctl --system
+
+                        # Install Kubernetes components
+                        echo "Installing Kubernetes components..."
+                        sudo bash -c 'cat <<EOT > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+EOT'
+
+                        for i in {1..5}; do
+                            sudo yum install -y kubelet kubeadm && break
+                            echo "Retry \$i: yum install kubelet kubeadm failed, waiting 10 seconds..."
+                            sleep 10
+                        done
+
+                        # Verify kubeadm is installed
+                        if ! command -v kubeadm &> /dev/null; then
+                            echo "ERROR: kubeadm installation failed"
+                            exit 1
+                        fi
+
+                        sudo systemctl enable kubelet
+                        sudo systemctl start kubelet
+
+                        # Run kubeadm join command
                         sudo ${KUBEADM_JOIN_CMD}
 EOF
                     """
 
                     // Clean up the generated key files
-                    sh 'rm k8-worker-key k8-worker-key.pub'
+                    sh 'rm -f k8-worker-key k8-worker-key.pub'
                 }
             }
         }
 
-        
         stage('Verify Worker Node') {
             steps {
-                sh 'kubectl get nodes -o wide'
+                sh 'sudo kubectl get nodes -o wide'
             }
         }
     }
+
     post {
         always {
-                sh 'terraform output'
+            sh 'terraform output || true'  // Ignore errors if output fails
         }
-         failure {
+        failure {
             script {
-                // sh 'terraform destroy -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
-                sh 'terraform output'
+                sh 'terraform destroy -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
             }
         }
     }
