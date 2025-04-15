@@ -23,11 +23,13 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                // Verify the public key file exists
-                        if (!fileExists('/var/lib/jenkins/k8-worker-key-partha.pub')) {
-                            error "Public key file /var/lib/jenkins/k8-worker-key.pub not found on jenkins-k8-master. Please ensure the file exists and is readable by the jenkins user."
-                        }
-                  sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha.pub)"'
+                script {
+                    // Verify the public key file exists
+                    if (!fileExists('/var/lib/jenkins/k8-worker-key-partha.pub')) {
+                        error "Public key file /var/lib/jenkins/k8-worker-key-partha.pub not found on jenkins-k8-master. Please ensure the file exists and is readable by the jenkins user."
+                    }
+                    sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha.pub)"'
+                }
             }
         }
 
