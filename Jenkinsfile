@@ -22,6 +22,10 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
+                // Verify the public key file exists
+                        if (!fileExists('/var/lib/jenkins/k8-worker-key.pub')) {
+                            error "Public key file /var/lib/jenkins/k8-worker-key.pub not found on jenkins-k8-master. Please ensure the file exists and is readable by the jenkins user."
+                        }
                   sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha.pub)"'
             }
         }
@@ -29,11 +33,11 @@ pipeline {
         stage('Get Kubeadm Join Command') {
             steps {
                 script {
-                    // Extract kubeadm token
-                    def token = sh(script: 'kubeadm token create', returnStdout: true).trim()
+                    // Extract kubeadm token using sudo
+                    def token = sh(script: 'sudo kubeadm token create', returnStdout: true).trim()
                     
-                    // Get CA certificate hash
-                    def caHash = sh(script: 'openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed "s/^.* //"', returnStdout: true).trim()
+                    // Get CA certificate hash using sudo
+                    def caHash = sh(script: 'sudo openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed "s/^.* //"', returnStdout: true).trim()
                     
                     // Get k8-master API server endpoint (public IP)
                     def masterIp = sh(script: 'curl -s http://169.254.169.254/latest/meta-data/public-ipv4', returnStdout: true).trim()
@@ -44,7 +48,7 @@ pipeline {
             }
         }
 
-        stage('Join Worker to Cluster') {
+       stage('Join Worker to Cluster') {
             steps {
                 script {
                     // Get k8-worker public IP from Terraform output
