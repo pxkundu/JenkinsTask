@@ -1,176 +1,195 @@
-# Variable for the SSH public key
-variable "ssh_public_key" {
-  description = "The SSH public key to use for the k8-worker instance"
-  type        = string
-}
+pipeline {
+    agent any
 
-provider "aws" {
-  region = "us-east-1"  # Replace with your region
-}
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
 
-# Data source to get the default VPC
-data "aws_vpc" "default" {
-  default = true
-}
+        stage('Generate SSH Key Pair') {
+            steps {
+                script {
+                    // Remove existing key files if they exist
+                    sh 'rm -f k8-worker-key k8-worker-key.pub'
+                    // Generate a new SSH key pair in the workspace
+                    sh 'ssh-keygen -t rsa -b 2048 -f k8-worker-key -N "" -C "k8-worker-key"'
+                    // Set permissions for the private key
+                    sh 'chmod 400 k8-worker-key'
+                    // Read the public key into a variable for Terraform
+                    env.SSH_PUBLIC_KEY = sh(script: 'cat k8-worker-key.pub', returnStdout: true).trim()
+                    echo "Generated SSH public key: ${env.SSH_PUBLIC_KEY}"
+                }
+            }
+        }
 
-# Data source to get the default subnet
-data "aws_subnet" "default" {
-  vpc_id = data.aws_vpc.default.id
-  availability_zone = "us-east-1a"  # Replace with your AZ
-}
+        stage('Terraform Init') {
+            steps {
+                sh 'terraform init'
+            }
+        }
 
-# Security group for k8-worker
-resource "aws_security_group" "k8_worker_sg" {
-  name        = "k8-worker-partha-sg"
-  description = "Security group for Kubernetes worker node"
-  vpc_id      = data.aws_vpc.default.id
+        stage('Terraform Apply') {
+            steps {
+                script {
+                    sh 'terraform apply -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
+                }
+            }
+        }
 
-  # Allow SSH from jenkins-k8-master
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["3.83.26.46/32"]  # Hardcoded public IP of k8-master
-  }
+        stage('Get Kubeadm Join Command') {
+            steps {
+                script {
+                    // Extract kubeadm token using sudo
+                    def token = sh(script: 'sudo kubeadm token create', returnStdout: true).trim()
+                    if (!token || token =~ /[^a-z0-9.]/) {
+                        error "Failed to generate a valid kubeadm token: ${token}"
+                    }
+                    
+                    // Get CA certificate hash using sudo
+                    def caHash = sh(script: 'sudo openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed "s/^.* //"', returnStdout: true).trim()
+                    if (!caHash || caHash =~ /[^a-f0-9]/) {
+                        error "Failed to generate a valid CA certificate hash: ${caHash}"
+                    }
+                    
+                    // Get k8-master public IP using AWS CLI
+                    def instanceId = sh(script: 'curl -s http://169.254.169.254/latest/meta-data/instance-id', returnStdout: true).trim()
+                    if (!instanceId || instanceId =~ /[^a-z0-9-]/) {
+                        error "Failed to retrieve instance ID: ${instanceId}"
+                    }
+                    def masterIp = sh(script: "aws ec2 describe-instances --instance-ids ${instanceId} --query 'Reservations[0].Instances[0].PublicIpAddress' --output text --region us-east-1", returnStdout: true).trim()
+                    if (!masterIp || masterIp =~ /[^0-9.]/) {
+                        error "Failed to retrieve a valid master IP: ${masterIp}"
+                    }
+                    
+                    // Construct kubeadm join command
+                    env.KUBEADM_JOIN_CMD = "kubeadm join ${masterIp}:6443 --token ${token} --discovery-token-ca-cert-hash sha256:${caHash}"
+                    echo "KUBEADM_JOIN_CMD: ${env.KUBEADM_JOIN_CMD}"
+                }
+            }
+        }
 
-  # Allow Kubernetes API server communication (port 6443)
-  ingress {
-    from_port   = 6443
-    to_port     = 6443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+        stage('Join Worker to Cluster') {
+            steps {
+                script {
+                    // Get k8-worker public IP from Terraform output
+                    def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
+                    echo "Worker IP: ${workerIp}"
 
-  # Allow Flannel CNI (port 8472/udp)
-  ingress {
-    from_port   = 8472
-    to_port     = 8472
-    protocol    = "udp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+                    // Test SSH connectivity using the generated private key
+                    sh "ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
 
-  # Allow Kubelet (port 10250)
-  ingress {
-    from_port   = 10250
-    to_port     = 10250
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+                    // Set up the worker node and run kubeadm join command
+                    sh """
+                        ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} << EOF
+                        # Update system and install basic utilities
+                        echo "Updating system..."
+                        for i in {1..5}; do
+                            sudo yum update -y && break
+                            echo "Retry \$i: yum update failed, waiting 10 seconds..."
+                            sleep 10
+                        done
 
-  # Allow all outbound traffic
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+                        # Install iproute to provide tc command
+                        echo "Installing iproute for tc command..."
+                        for i in {1..5}; do
+                            sudo yum install -y iproute && break
+                            echo "Retry \$i: yum install iproute failed, waiting 10 seconds..."
+                            sleep 10
+                        done
 
-  tags = {
-    Name = "k8-worker-partha-sg"
-  }
-}
+                        # Install containerd as container runtime
+                        echo "Installing containerd..."
+                        for i in {1..5}; do
+                            sudo yum install -y containerd && break
+                            echo "Retry \$i: yum install containerd failed, waiting 10 seconds..."
+                            sleep 10
+                        done
+                        sudo systemctl enable containerd
+                        sudo systemctl start containerd
 
-# EC2 instance for k8-worker
-resource "aws_instance" "k8_worker" {
-  ami                    = "ami-0a38b8c18f189761a"  # Amazon Linux 2 AMI for us-east-1 (update if needed)
-  instance_type          = "t2.micro"            # 2 vCPUs, 4GB RAM
-  subnet_id              = data.aws_subnet.default.id
-  vpc_security_group_ids = [aws_security_group.k8_worker_sg.id]
-  key_name               = aws_key_pair.k8_worker_key.key_name
+                        # Configure containerd
+                        sudo mkdir -p /etc/containerd
+                        containerd config default | sudo tee /etc/containerd/config.toml
+                        sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+                        sudo systemctl restart containerd
 
-  user_data = <<-EOF
-              #!/bin/bash
-              # Define log file
-              LOG_FILE="/var/log/user-data.log"
-              exec > >(tee -a $LOG_FILE) 2>&1
-              set -x
+                        # Disable SELinux (simplified for learning)
+                        sudo setenforce 0
+                        sudo sed -i 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
 
-              echo "Starting user data script at \$(date)"
+                        # Disable swap (Kubernetes requirement)
+                        sudo swapoff -a
+                        sudo sed -i '/swap/d' /etc/fstab
 
-              # Update system and install basic utilities
-              echo "Updating system..." | tee -a $LOG_FILE
-              for i in {1..5}; do
-                  yum update -y && break
-                  echo "Retry \$i: yum update failed, waiting 10 seconds..." | tee -a $LOG_FILE
-                  sleep 10
-              done
+                        # Load required kernel modules
+                        echo "Loading kernel modules..."
+                        sudo modprobe br_netfilter
+                        echo 'br_netfilter' | sudo tee /etc/modules-load.d/br_netfilter.conf
 
-              # Install containerd as container runtime
-              echo "Installing containerd..." | tee -a $LOG_FILE
-              for i in {1..5}; do
-                  yum install -y containerd && break
-                  echo "Retry \$i: yum install containerd failed, waiting 10 seconds..." | tee -a $LOG_FILE
-                  sleep 10
-              done
-              systemctl enable containerd
-              systemctl start containerd
+                        # Enable IP forwarding and bridge iptables
+                        echo "Enabling IP forwarding and bridge iptables..."
+                        sudo sysctl -w net.ipv4.ip_forward=1
+                        sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+                        sudo bash -c 'cat <<EOT > /etc/sysctl.d/99-kubernetes.conf
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOT'
+                        sudo sysctl --system
 
-              # Configure containerd
-              mkdir -p /etc/containerd
-              containerd config default > /etc/containerd/config.toml
-              sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-              systemctl restart containerd
-
-              # Disable SELinux (simplified for learning)
-              setenforce 0
-              sed -i 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
-
-              # Disable swap (Kubernetes requirement)
-              swapoff -a
-              sed -i '/swap/d' /etc/fstab
-
-              # Load required kernel modules
-              echo "Loading kernel modules..." | tee -a $LOG_FILE
-              modprobe br_netfilter
-              echo 'br_netfilter' > /etc/modules-load.d/br_netfilter.conf
-
-              # Enable IP forwarding
-              echo "Enabling IP forwarding..." | tee -a $LOG_FILE
-              sysctl -w net.ipv4.ip_forward=1
-              echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-kubernetes.conf
-              sysctl --system
-
-              # Install Kubernetes components
-              echo "Installing Kubernetes components..." | tee -a $LOG_FILE
-              cat <<EOT > /etc/yum.repos.d/kubernetes.repo
+                        # Install Kubernetes components
+                        echo "Installing Kubernetes components..."
+                        sudo bash -c 'cat <<EOT > /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
 baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
 enabled=1
 gpgcheck=1
 gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
-EOT
+EOT'
 
-              for i in {1..5}; do
-                  yum install -y kubelet kubeadm && break
-                  echo "Retry \$i: yum install kubelet kubeadm failed, waiting 10 seconds..." | tee -a $LOG_FILE
-                  sleep 10
-              done
+                        for i in {1..5}; do
+                            sudo yum install -y kubelet kubeadm && break
+                            echo "Retry \$i: yum install kubelet kubeadm failed, waiting 10 seconds..."
+                            sleep 10
+                        done
 
-              # Verify kubeadm is installed
-              if ! command -v kubeadm &> /dev/null; then
-                  echo "ERROR: kubeadm installation failed" | tee -a $LOG_FILE
-                  exit 1
-              fi
+                        # Verify kubeadm is installed
+                        if ! command -v kubeadm &> /dev/null; then
+                            echo "ERROR: kubeadm installation failed"
+                            exit 1
+                        fi
 
-              systemctl enable kubelet
-              systemctl start kubelet
+                        sudo systemctl enable kubelet
+                        sudo systemctl start kubelet
 
-              echo "User data script completed at \$(date)" | tee -a $LOG_FILE
-              EOF
+                        # Run kubeadm join command
+                        sudo ${KUBEADM_JOIN_CMD}
+EOF
+                    """
 
-  tags = {
-    Name = "k8-worker-partha"
-  }
-}
+                    // Clean up the generated key files
+                    sh 'rm -f k8-worker-key k8-worker-key.pub'
+                }
+            }
+        }
 
-# SSH key pair for k8-worker
-resource "aws_key_pair" "k8_worker_key" {
-  key_name   = "k8-worker-key-partha-1"
-  public_key = var.ssh_public_key  # Use the variable instead of a file
-}
+        stage('Verify Worker Node') {
+            steps {
+                sh 'sudo kubectl get nodes -o wide'
+            }
+        }
+    }
 
-# Output the public IP of k8-worker
-output "k8_worker_public_ip" {
-  value = aws_instance.k8_worker.public_ip
+    post {
+        always {
+            sh 'terraform output || true'  // Ignore errors if output fails
+        }
+        failure {
+            script {
+                sh 'terraform destroy -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
+            }
+        }
+    }
 }
