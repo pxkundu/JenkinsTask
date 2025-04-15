@@ -21,7 +21,7 @@ data "aws_subnet" "default" {
 
 # Security group for k8-worker
 resource "aws_security_group" "k8_worker_sg" {
-  name        = "k8-worker-sg"
+  name        = "k8-worker-partha-sg"
   description = "Security group for Kubernetes worker node"
   vpc_id      = data.aws_vpc.default.id
 
@@ -115,7 +115,7 @@ resource "aws_instance" "k8_worker" {
               EOF
 
   tags = {
-    Name = "k8-worker"
+    Name = "k8-worker-partha"
   }
 }
 
