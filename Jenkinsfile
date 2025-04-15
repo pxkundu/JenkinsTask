@@ -24,10 +24,10 @@ pipeline {
             steps {
                 script {
                     // Verify the public key file exists
-                    if (!fileExists('/var/lib/jenkins/k8-worker-key-partha.pub')) {
-                        error "Public key file /var/lib/jenkins/k8-worker-key-partha.pub not found on jenkins-k8-master. Please ensure the file exists and is readable by the jenkins user."
+                    if (!fileExists('/var/lib/jenkins/k8-worker-key-partha-1.pub')) {
+                        error "Public key file /var/lib/jenkins/k8-worker-key-partha-1.pub not found on jenkins-k8-master. Please ensure the file exists and is readable by the jenkins user."
                     }
-                    sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha.pub)"'
+                    sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha-1.pub)"'
                 }
             }
         }
@@ -57,10 +57,10 @@ pipeline {
                     def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
                     
                     // Write SSH key to a temporary file
-                    writeFile file: 'k8-worker-key-partha', text: env.K8_WORKER_SSH_KEY
+                    writeFile file: 'k8-worker-key-partha-1', text: env.K8_WORKER_SSH_KEY
                     
                     // Set permissions for SSH key
-                    sh 'chmod 400 k8-worker-key-partha'
+                    sh 'chmod 400 k8-worker-key-partha-1'
                     
                     // SSH into k8-worker and run kubeadm join
                     sh """
@@ -70,7 +70,7 @@ pipeline {
                     """
                     
                     // Clean up SSH key file
-                    sh 'rm k8-worker-key-partha'
+                    sh 'rm k8-worker-key-partha-1'
                 }
             }
         }
