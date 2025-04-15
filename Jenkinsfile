@@ -55,19 +55,40 @@ pipeline {
                 script {
                     // Get k8-worker public IP from Terraform output
                     def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
+                    echo "Worker IP: ${workerIp}"
                     
                     // Write SSH key to a temporary file
                     writeFile file: 'k8-worker-key-partha-1', text: env.K8_WORKER_SSH_KEY
                     
+                    // Debug: Inspect the key file
+                    sh 'ls -l k8-worker-key-partha-1'
+                    sh 'head -n 2 k8-worker-key-partha-1'
+                    
                     // Set permissions for SSH key
                     sh 'chmod 400 k8-worker-key-partha-1'
                     
-                    // SSH into k8-worker and run kubeadm join
-                    sh """
+                    // Debug: Test SSH connectivity
+                    sh "ssh -i k8-worker-key-partha-1 -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
+                    
+                    // SSH into k8-worker and run kubeadm join with debug output
+                    def joinOutput = sh(script: """
                         ssh -i k8-worker-key-partha-1 -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
-                        sudo ${KUBEADM_JOIN_CMD}
+                        echo "Running kubeadm join command..."
+                        sudo ${KUBEADM_JOIN_CMD} 2>&1
+                        JOIN_EXIT_CODE=\$?
+                        echo "kubeadm join exit code: \$JOIN_EXIT_CODE"
+                        if [ \$JOIN_EXIT_CODE -ne 0 ]; then
+                            echo "kubeadm join failed. Checking node status..."
+                            sudo kubeadm reset -f 2>&1
+                            exit \$JOIN_EXIT_CODE
+                        fi
+                        echo "Checking Kubernetes components..."
+                        sudo systemctl status kubelet 2>&1
+                        sudo journalctl -u kubelet -n 50 2>&1
                         EOF
-                    """
+                    """, returnStdout: true).trim()
+                    
+                    echo "kubeadm join output:\n${joinOutput}"
                     
                     // Clean up SSH key file
                     sh 'rm k8-worker-key-partha-1'
@@ -86,7 +107,6 @@ pipeline {
                 sh 'terraform output'
         }
         failure {
-                sh 'terraform destroy -auto-approve'
-        }
+            sh 'terraform destroy -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha-1.pub)"'        }
     }
 }
