@@ -66,7 +66,7 @@ resource "aws_security_group" "k8_worker_sg" {
   }
 
   tags = {
-    Name = "k8-worker-sg"
+    Name = "k8-worker-partha-sg"
   }
 }
 
