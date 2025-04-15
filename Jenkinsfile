@@ -11,6 +11,8 @@ pipeline {
         stage('Generate SSH Key Pair') {
             steps {
                 script {
+                    // Destroy before running again
+                    sh 'terraform destroy -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
                     // Remove existing key files if they exist
                     sh 'rm -f k8-worker-key k8-worker-key.pub'
                     // Generate a new SSH key pair in the workspace
@@ -53,14 +55,10 @@ pipeline {
                         error "Failed to generate a valid CA certificate hash: ${caHash}"
                     }
                     
-                    // Get k8-master public IP using AWS CLI
-                    
+                    // Get k8-master internal IP using AWS CLI
                     def masterIp = "172.31.1.179"
-                    if (!masterIp || masterIp =~ /[^0-9.]/) {
-                        error "Failed to retrieve a valid master IP: ${masterIp}"
-                    }
                     
-                    // Construct kubeadm join command
+                    // Construct kubeadm join command using the internal IP
                     env.KUBEADM_JOIN_CMD = "kubeadm join ${masterIp}:6443 --token ${token} --discovery-token-ca-cert-hash sha256:${caHash}"
                     echo "KUBEADM_JOIN_CMD: ${env.KUBEADM_JOIN_CMD}"
                 }
@@ -74,12 +72,25 @@ pipeline {
                     def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
                     echo "Worker IP: ${workerIp}"
 
+                    // Get k8-worker internal IP (needed for /etc/hosts)
+                    def workerInternalIp = sh(script: "aws ec2 describe-instances --filters 'Name=public-ip-address,Values=${workerIp}' --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text --region us-east-1", returnStdout: true).trim()
+                    if (!workerInternalIp || workerInternalIp =~ /[^0-9.]/) {
+                        error "Failed to retrieve a valid worker internal IP: ${workerInternalIp}"
+                    }
+                    echo "Worker Internal IP: ${workerInternalIp}"
+
                     // Test SSH connectivity using the generated private key
                     sh "ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
 
                     // Set up the worker node and run kubeadm join command
                     sh """
                         ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} << EOF
+                        # Update hostname and /etc/hosts
+                        echo "Setting hostname to k8-worker-partha..."
+                        sudo hostnamectl set-hostname k8-worker-partha
+                        sudo bash -c 'echo "${workerInternalIp} k8-worker-partha" >> /etc/hosts'
+                        echo "Updated /etc/hosts with: ${workerInternalIp} k8-worker-partha"
+
                         # Update system and install basic utilities
                         echo "Updating system..."
                         for i in {1..5}; do
