@@ -43,7 +43,7 @@ resource "aws_security_group" "k8_worker_sg" {
 
 # k8-worker EC2 instance
 resource "aws_instance" "k8_worker" {
-  ami           = "ami-0a38b8c18f189761a"  # Amazon Linux 2 AMI in us-east-1
+  ami           = "ami-08b5b3a93ed654d19" # Amazon Linux 2 AMI in us-east-1
   instance_type = "t3.medium"
   key_name      = aws_key_pair.k8_worker_key.key_name
   vpc_security_group_ids = [aws_security_group.k8_worker_sg.id]
