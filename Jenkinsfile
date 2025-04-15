@@ -14,24 +14,35 @@ pipeline {
             }
         }
 
+        stage('Generate SSH Key Pair') {
+            steps {
+                script {
+                    // Generate a new SSH key pair in the workspace
+                    sh 'ssh-keygen -t rsa -b 2048 -f k8-worker-key -N "" -C "k8-worker-key"'
+                    // Set permissions for the private key
+                    sh 'chmod 400 k8-worker-key'
+                    // Read the public key into a variable for Terraform
+                    env.SSH_PUBLIC_KEY = sh(script: 'cat k8-worker-key.pub', returnStdout: true).trim()
+                    echo "Generated SSH public key: ${env.SSH_PUBLIC_KEY}"
+                }
+            }
+        }
         stage('Terraform Init') {
             steps {
                 sh 'terraform init'
             }
         }
 
-        stage('Terraform Apply') {
+         stage('Terraform Apply') {
             steps {
                 script {
-                    // Verify the public key file exists
-                    if (!fileExists('/var/lib/jenkins/k8-worker-key-partha-1.pub')) {
-                        error "Public key file /var/lib/jenkins/k8-worker-key-partha-1.pub not found on jenkins-k8-master. Please ensure the file exists and is readable by the jenkins user."
-                    }
-                    sh 'terraform apply -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha-1.pub)"'
+                    // Use the dynamically generated public key
+                    sh 'terraform apply -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
                 }
             }
         }
 
+        
         stage('Get Kubeadm Join Command') {
             steps {
                 script {
@@ -46,10 +57,13 @@ pipeline {
                     
                     // Construct kubeadm join command
                     env.KUBEADM_JOIN_CMD = "kubeadm join ${masterIp}:6443 --token ${token} --discovery-token-ca-cert-hash sha256:${caHash}"
+                    
+                    // Debug: Print the constructed join command
+                    echo "KUBEADM_JOIN_CMD: ${env.KUBEADM_JOIN_CMD}"
                 }
             }
         }
-        
+
         stage('Join Worker to Cluster') {
             steps {
                 script {
@@ -57,34 +71,36 @@ pipeline {
                     def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
                     echo "Worker IP: ${workerIp}"
 
-                    // Use sshagent to manage the SSH key and execute the join command
-                    sshagent(credentials: ['k8-worker-ssh-key-partha']) {
-                        // Test SSH connectivity
-                        sh "ssh -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
+                    // Test SSH connectivity using the generated private key
+                    sh "ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
 
-                        // Run kubeadm join command with debug output
-                        def joinOutput = sh(script: """
-                            ssh -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
-                            echo "Running kubeadm join command..."
-                            sudo ${KUBEADM_JOIN_CMD} 2>&1
-                            JOIN_EXIT_CODE=\$?
-                            echo "kubeadm join exit code: \$JOIN_EXIT_CODE"
-                            if [ \$JOIN_EXIT_CODE -ne 0 ]; then
-                                echo "kubeadm join failed. Checking node status..."
-                                sudo kubeadm reset -f 2>&1
-                                exit \$JOIN_EXIT_CODE
-                            fi
-                            echo "Checking Kubernetes components..."
-                            sudo systemctl status kubelet 2>&1
-                            sudo journalctl -u kubelet -n 50 2>&1
-                            EOF
-                        """, returnStdout: true).trim()
+                    // Run kubeadm join command with debug output
+                    def joinOutput = sh(script: """
+                        ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
+                        echo "Running kubeadm join command..."
+                        sudo ${KUBEADM_JOIN_CMD} 2>&1
+                        JOIN_EXIT_CODE=\$?
+                        echo "kubeadm join exit code: \$JOIN_EXIT_CODE"
+                        if [ \$JOIN_EXIT_CODE -ne 0 ]; then
+                            echo "kubeadm join failed. Checking node status..."
+                            sudo kubeadm reset -f 2>&1
+                            exit \$JOIN_EXIT_CODE
+                        fi
+                        echo "Checking Kubernetes components..."
+                        sudo systemctl status kubelet 2>&1
+                        sudo journalctl -u kubelet -n 50 2>&1
+                        EOF
+                    """, returnStdout: true).trim()
 
-                        echo "kubeadm join output:\n${joinOutput}"
-                    }
+                    echo "kubeadm join output:\n${joinOutput}"
+
+                    // Clean up the generated key files
+                    sh 'rm k8-worker-key k8-worker-key.pub'
                 }
             }
         }
+
+        
         stage('Verify Worker Node') {
             steps {
                 sh 'kubectl get nodes -o wide'
