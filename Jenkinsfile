@@ -50,12 +50,26 @@ pipeline {
             }
         }
 
-       stage('Join Worker to Cluster') {
+      
+        stage('Join Worker to Cluster') {
             steps {
                 script {
-                    // Get k8-worker public IP from Terraform output
-                    def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
+                    // Get k8-worker public IP from Terraform output with timeout and debug
+                    def terraformOutput
+                    try {
+                        timeout(time: 30, unit: 'SECONDS') {
+                            terraformOutput = sh(script: 'terraform output -raw k8_worker_public_ip 2>&1', returnStdout: true).trim()
+                        }
+                    } catch (Exception e) {
+                        error "Failed to retrieve k8-worker public IP: ${e.message}\nTerraform output: ${terraformOutput}"
+                    }
+                    echo "Terraform output (k8_worker_public_ip): ${terraformOutput}"
+                    
+                    def workerIp = terraformOutput
                     echo "Worker IP: ${workerIp}"
+                    
+                    // Debug: Checkpoint to confirm pipeline proceeds
+                    echo "Checkpoint: Proceeding to write SSH key file..."
                     
                     // Write SSH key to a temporary file
                     writeFile file: 'k8-worker-key-partha-1', text: env.K8_WORKER_SSH_KEY
