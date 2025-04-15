@@ -55,7 +55,7 @@ pipeline {
                     
                     // Get k8-master public IP using AWS CLI
                     
-                    def masterIp = "3.83.26.46"
+                    def masterIp = "172.31.1.179"
                     if (!masterIp || masterIp =~ /[^0-9.]/) {
                         error "Failed to retrieve a valid master IP: ${masterIp}"
                     }
