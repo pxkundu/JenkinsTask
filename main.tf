@@ -97,13 +97,19 @@ resource "aws_instance" "k8_worker" {
               gpgcheck=1
               gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
               EOT
-              yum install -y kubeadm-1.29.3 kubelet-1.29.3 kubectl-1.29.3
-              systemctl enable kubelet
-              systemctl start kubelet
-
-              # Disable swap (required by Kubernetes)
-              swapoff -a
-              sed -i '/swap/d' /etc/fstab
+              # Install components with conflict resolution
+              sudo dnf install -y kubeadm kubelet kubectl --disableexcludes=kubernetes --allowerasing
+      
+              # Start services
+              sudo systemctl enable kubelet
+              sudo systemctl start kubelet || true
+      
+              # Disable swap (kubeadm requirement)
+              sudo swapoff -a
+              sudo sed -i "/swap/d" /etc/fstab
+      
+              # Reset and join the cluster
+              sudo kubeadm reset -f
 
               # Configure sysctl for Kubernetes networking
               cat <<EOT > /etc/sysctl.d/k8s.conf
