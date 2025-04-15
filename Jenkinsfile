@@ -49,82 +49,42 @@ pipeline {
                 }
             }
         }
-
-      
+        
         stage('Join Worker to Cluster') {
             steps {
                 script {
-                    // Get k8-worker public IP from Terraform output with timeout and debug
-                    def terraformOutput
-                    try {
-                        timeout(time: 30, unit: 'SECONDS') {
-                            terraformOutput = sh(script: 'terraform output -raw k8_worker_public_ip 2>&1', returnStdout: true).trim()
-                        }
-                    } catch (Exception e) {
-                        error "Failed to retrieve k8-worker public IP: ${e.message}\nTerraform output: ${terraformOutput}"
-                    }
-                    echo "Terraform output (k8_worker_public_ip): ${terraformOutput}"
-                    
-                    def workerIp = terraformOutput
+                    // Get k8-worker public IP from Terraform output
+                    def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
                     echo "Worker IP: ${workerIp}"
-                    
-                    // Debug: Checkpoint to confirm pipeline proceeds
-                    echo "Checkpoint: Proceeding to write SSH key file..."
-                    
-                    // Debug: Check workspace permissions and disk space
-                    sh 'pwd'
-                    sh 'ls -ld .'
-                    sh 'df -h .'
-                    
-                    // Debug: Inspect the K8_WORKER_SSH_KEY variable
-                    echo "K8_WORKER_SSH_KEY length: ${env.K8_WORKER_SSH_KEY?.length()}"
-                    echo "K8_WORKER_SSH_KEY first 50 chars: ${env.K8_WORKER_SSH_KEY?.substring(0, Math.min(50, env.K8_WORKER_SSH_KEY?.length() ?: 0))}"
-                    
-                    // Write SSH key to a temporary file with error handling
-                    try {
-                        writeFile file: 'k8-worker-key-partha-1', text: env.K8_WORKER_SSH_KEY
-                        echo "Checkpoint: SSH key file written successfully"
-                    } catch (Exception e) {
-                        error "Failed to write SSH key file: ${e.message}"
+
+                    // Use sshagent to manage the SSH key and execute the join command
+                    sshagent(credentials: ['k8-worker-ssh-key']) {
+                        // Test SSH connectivity
+                        sh "ssh -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
+
+                        // Run kubeadm join command with debug output
+                        def joinOutput = sh(script: """
+                            ssh -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
+                            echo "Running kubeadm join command..."
+                            sudo ${KUBEADM_JOIN_CMD} 2>&1
+                            JOIN_EXIT_CODE=\$?
+                            echo "kubeadm join exit code: \$JOIN_EXIT_CODE"
+                            if [ \$JOIN_EXIT_CODE -ne 0 ]; then
+                                echo "kubeadm join failed. Checking node status..."
+                                sudo kubeadm reset -f 2>&1
+                                exit \$JOIN_EXIT_CODE
+                            fi
+                            echo "Checking Kubernetes components..."
+                            sudo systemctl status kubelet 2>&1
+                            sudo journalctl -u kubelet -n 50 2>&1
+                            EOF
+                        """, returnStdout: true).trim()
+
+                        echo "kubeadm join output:\n${joinOutput}"
                     }
-                    
-                    // Debug: Inspect the key file
-                    sh 'ls -l k8-worker-key-partha-1'
-                    sh 'head -n 2 k8-worker-key-partha-1'
-                    
-                    // Set permissions for SSH key
-                    sh 'chmod 400 k8-worker-key-partha-1'
-                    
-                    // Debug: Test SSH connectivity
-                    sh "ssh -i k8-worker-key-partha-1 -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
-                    
-                    // SSH into k8-worker and run kubeadm join with debug output
-                    def joinOutput = sh(script: """
-                        ssh -i k8-worker-key-partha-1 -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
-                        echo "Running kubeadm join command..."
-                        sudo ${KUBEADM_JOIN_CMD} 2>&1
-                        JOIN_EXIT_CODE=\$?
-                        echo "kubeadm join exit code: \$JOIN_EXIT_CODE"
-                        if [ \$JOIN_EXIT_CODE -ne 0 ]; then
-                            echo "kubeadm join failed. Checking node status..."
-                            sudo kubeadm reset -f 2>&1
-                            exit \$JOIN_EXIT_CODE
-                        fi
-                        echo "Checking Kubernetes components..."
-                        sudo systemctl status kubelet 2>&1
-                        sudo journalctl -u kubelet -n 50 2>&1
-                        EOF
-                    """, returnStdout: true).trim()
-                    
-                    echo "kubeadm join output:\n${joinOutput}"
-                    
-                    // Clean up SSH key file
-                    sh 'rm k8-worker-key-partha-1'
                 }
             }
         }
-
-
         stage('Verify Worker Node') {
             steps {
                 sh 'kubectl get nodes -o wide'
