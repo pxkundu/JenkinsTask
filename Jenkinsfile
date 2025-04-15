@@ -54,7 +54,7 @@ pipeline {
             steps {
                 script {
                     // Get k8-worker public IP from Terraform output
-                    def workerIp = sh(script: 'cd k8s-terraform && terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
+                    def workerIp = sh(script: 'terraform output -raw k8_worker_public_ip', returnStdout: true).trim()
                     
                     // Write SSH key to a temporary file
                     writeFile file: 'k8-worker-key-partha', text: env.K8_WORKER_SSH_KEY
