@@ -103,7 +103,8 @@ EOF
         }
          failure {
             script {
-                sh 'terraform destroy -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
+                // sh 'terraform destroy -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
+                sh 'terraform output'
             }
         }
     }
