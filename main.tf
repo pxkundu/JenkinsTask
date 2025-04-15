@@ -1,8 +1,8 @@
 # Variable for the SSH public key
-   variable "ssh_public_key" {
-     description = "The SSH public key to use for the k8-worker instance"
-     type        = string
-   }
+variable "ssh_public_key" {
+  description = "The SSH public key to use for the k8-worker instance"
+  type        = string
+}
 
 provider "aws" {
   region = "us-east-1"  # Replace with your region
@@ -19,11 +19,6 @@ data "aws_subnet" "default" {
   availability_zone = "us-east-1a"  # Replace with your AZ
 }
 
-# Get the public IP of k8-master (jenkins-k8-master)
-data "external" "k8_master_ip" {
-  program = ["bash", "-c", "echo '{\"public_ip\": \"'$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)'\"}'"]
-}
-
 # Security group for k8-worker
 resource "aws_security_group" "k8_worker_sg" {
   name        = "k8-worker-sg"
@@ -35,7 +30,7 @@ resource "aws_security_group" "k8_worker_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["3.83.26.46/32"]
+    cidr_blocks = ["3.83.26.46/32"]  # Hardcoded public IP of k8-master
   }
 
   # Allow Kubernetes API server communication (port 6443)
@@ -78,7 +73,7 @@ resource "aws_security_group" "k8_worker_sg" {
 # EC2 instance for k8-worker
 resource "aws_instance" "k8_worker" {
   ami                    = "ami-0a38b8c18f189761a"  # Amazon Linux 2 AMI for us-east-1 (update if needed)
-  instance_type          = "t2.micro"            # 2 vCPUs, 4GB RAM
+  instance_type          = "t3.medium"            # 2 vCPUs, 4GB RAM
   subnet_id              = data.aws_subnet.default.id
   vpc_security_group_ids = [aws_security_group.k8_worker_sg.id]
   key_name               = aws_key_pair.k8_worker_key.key_name
@@ -125,12 +120,12 @@ resource "aws_instance" "k8_worker" {
 }
 
 # SSH key pair for k8-worker
-   resource "aws_key_pair" "k8_worker_key" {
-     key_name   = "k8-worker-key"
-     public_key = var.ssh_public_key  # Use the variable instead of a file
-   }
+resource "aws_key_pair" "k8_worker_key" {
+  key_name   = "k8-worker-key"
+  public_key = var.ssh_public_key  # Use the variable instead of a file
+}
 
-   # Output the public IP of k8-worker
-   output "k8_worker_public_ip" {
-     value = aws_instance.k8_worker.public_ip
-   }
+# Output the public IP of k8-worker
+output "k8_worker_public_ip" {
+  value = aws_instance.k8_worker.public_ip
+}
