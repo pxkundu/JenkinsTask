@@ -58,7 +58,7 @@ pipeline {
                     echo "Worker IP: ${workerIp}"
 
                     // Use sshagent to manage the SSH key and execute the join command
-                    sshagent(credentials: ['k8-worker-ssh-key']) {
+                    sshagent(credentials: ['k8-worker-ssh-key-partha']) {
                         // Test SSH connectivity
                         sh "ssh -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
 
