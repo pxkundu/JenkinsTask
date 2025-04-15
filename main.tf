@@ -121,7 +121,7 @@ resource "aws_instance" "k8_worker" {
 
 # SSH key pair for k8-worker
 resource "aws_key_pair" "k8_worker_key" {
-  key_name   = "k8-worker-key"
+  key_name   = "k8-worker-key-partha"
   public_key = var.ssh_public_key  # Use the variable instead of a file
 }
 
