@@ -64,6 +64,7 @@ pipeline {
             }
         }
 
+        
         stage('Join Worker to Cluster') {
             steps {
                 script {
@@ -74,25 +75,12 @@ pipeline {
                     // Test SSH connectivity using the generated private key
                     sh "ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} 'echo SSH connection successful; hostname; whoami'"
 
-                    // Run kubeadm join command with debug output
-                    def joinOutput = sh(script: """
-                        ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} << 'EOF'
-                        echo "Running kubeadm join command..."
-                        sudo ${KUBEADM_JOIN_CMD} 2>&1
-                        JOIN_EXIT_CODE=\$?
-                        echo "kubeadm join exit code: \$JOIN_EXIT_CODE"
-                        if [ \$JOIN_EXIT_CODE -ne 0 ]; then
-                            echo "kubeadm join failed. Checking node status..."
-                            sudo kubeadm reset -f 2>&1
-                            exit \$JOIN_EXIT_CODE
-                        fi
-                        echo "Checking Kubernetes components..."
-                        sudo systemctl status kubelet 2>&1
-                        sudo journalctl -u kubelet -n 50 2>&1
-                        EOF
-                    """, returnStdout: true).trim()
-
-                    echo "kubeadm join output:\n${joinOutput}"
+                    // Run kubeadm join command
+                    sh """
+                        ssh -i k8-worker-key -o StrictHostKeyChecking=no ec2-user@${workerIp} << EOF
+                        sudo ${KUBEADM_JOIN_CMD}
+EOF
+                    """
 
                     // Clean up the generated key files
                     sh 'rm k8-worker-key k8-worker-key.pub'
@@ -111,7 +99,10 @@ pipeline {
         always {
                 sh 'terraform output'
         }
-        failure {
-            sh 'terraform destroy -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key-partha-1.pub)"'        }
+         failure {
+            script {
+                sh 'terraform destroy -auto-approve -var="ssh_public_key=${SSH_PUBLIC_KEY}"'
+            }
+        }
     }
 }
