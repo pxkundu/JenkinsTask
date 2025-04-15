@@ -16,7 +16,7 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                sh 'terraform destroy -auto-approve'
+                sh 'terraform destroy -auto-approve -var="ssh_public_key=$(cat /var/lib/jenkins/k8-worker-key.pub)"'
                 sh 'terraform init'
             }
         }
