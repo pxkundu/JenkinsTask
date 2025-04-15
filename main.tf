@@ -73,7 +73,7 @@ resource "aws_security_group" "k8_worker_sg" {
 # EC2 instance for k8-worker
 resource "aws_instance" "k8_worker" {
   ami                    = "ami-0a38b8c18f189761a"  # Amazon Linux 2 AMI for us-east-1 (update if needed)
-  instance_type          = "t3.medium"            # 2 vCPUs, 4GB RAM
+  instance_type          = "t2.micro"            # 2 vCPUs, 4GB RAM
   subnet_id              = data.aws_subnet.default.id
   vpc_security_group_ids = [aws_security_group.k8_worker_sg.id]
   key_name               = aws_key_pair.k8_worker_key.key_name
