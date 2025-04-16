@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: nginx
   namespace: partha-ns
+  labels:
+    app: nginx
 spec:
   replicas: 1
   selector:
@@ -16,5 +18,20 @@ spec:
       containers:
       - name: nginx
         image: nginx:latest
+        command: ["nginx"]
+        args: ["-t"]
         ports:
         - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: partha-ns
+spec:
+  selector:
+    app: nginx
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
