@@ -77,12 +77,119 @@ retry() {
 # Trap errors and warnings
 trap cleanup ERR
 
-# Configuration variables
-CLUSTER_NAME="partha-game-cluster"
-REGION="us-east-1"
-VPC_ID="vpc-0e13ae6de03f62cd5"
-APP_NAMESPACE="game-2048"
-LB_NAMESPACE="kube-system"
+# Function to validate AWS region
+validate_region() {
+    local region=$1
+    log "Validating AWS region: $region..."
+    if aws ec2 describe-regions --region-names "$region" --query 'Regions[0].RegionName' --output text 2>/dev/null | grep -q "$region"; then
+        log "Region $region is valid"
+        return 0
+    else
+        log "ERROR: Invalid AWS region: $region"
+        cleanup
+    fi
+}
+
+# Function to validate VPC ID
+validate_vpc() {
+    local vpc_id=$1
+    local region=$2
+    log "Validating VPC ID: $vpc_id..."
+    if [[ ! "$vpc_id" =~ ^vpc-[0-9a-f]{17}$ ]]; then
+        log "ERROR: VPC ID $vpc_id does not match expected format (e.g., vpc-0e13ae6de03f62cd5)"
+        cleanup
+    fi
+    if aws ec2 describe-vpcs --vpc-ids "$vpc_id" --region "$region" --query 'Vpcs[0].VpcId' --output text 2>/dev/null | grep -q "$vpc_id"; then
+        log "VPC ID $vpc_id is valid"
+        return 0
+    else
+        log "ERROR: VPC ID $vpc_id does not exist in region $region"
+        cleanup
+    fi
+}
+
+# Function to validate namespace name
+validate_namespace() {
+    local namespace=$1
+    log "Validating namespace: $namespace..."
+    if [[ ! "$namespace" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+        log "ERROR: Namespace $namespace is invalid. It must be lowercase, start and end with alphanumeric characters, and can contain hyphens in between."
+        cleanup
+    fi
+    if [ ${#namespace} -gt 63 ]; then
+        log "ERROR: Namespace $namespace is too long. It must be 63 characters or less."
+        cleanup
+    fi
+    log "Namespace $namespace is valid"
+}
+
+# Prompt for user inputs
+echo "Please provide the following details to deploy the application on the EKS cluster:"
+echo "Ensure these match the values used in set-up-infra.sh for cluster name, region, VPC ID, and namespaces."
+echo ""
+
+# Cluster Name
+while true; do
+    read -p "Enter the EKS cluster name (e.g., my-game-cluster): " CLUSTER_NAME
+    if [[ -z "$CLUSTER_NAME" ]]; then
+        echo "Cluster name cannot be empty. Please try again."
+    elif [[ ! "$CLUSTER_NAME" =~ ^[a-zA-Z0-9-]+$ ]]; then
+        echo "Cluster name can only contain alphanumeric characters and hyphens. Please try again."
+    elif [ ${#CLUSTER_NAME} -gt 100 ]; then
+        echo "Cluster name is too long. It must be 100 characters or less. Please try again."
+    else
+        break
+    fi
+done
+
+# AWS Region
+while true; do
+    read -p "Enter the AWS region (e.g., us-east-1): " REGION
+    if [[ -z "$REGION" ]]; then
+        echo "Region cannot be empty. Please try again."
+    else
+        validate_region "$REGION"
+        break
+    fi
+done
+
+# VPC ID
+while true; do
+    read -p "Enter the VPC ID (e.g., vpc-0e13ae6de03f62cd5): " VPC_ID
+    if [[ -z "$VPC_ID" ]]; then
+        echo "VPC ID cannot be empty. Please try again."
+    else
+        validate_vpc "$VPC_ID" "$REGION"
+        break
+    fi
+done
+
+# Application Namespace
+while true; do
+    read -p "Enter the namespace for the application (default: game-2048): " APP_NAMESPACE
+    APP_NAMESPACE=${APP_NAMESPACE:-game-2048}
+    validate_namespace "$APP_NAMESPACE"
+    break
+done
+
+# Load Balancer Namespace
+while true; do
+    read -p "Enter the namespace for the load balancer controller (default: kube-system): " LB_NAMESPACE
+    LB_NAMESPACE=${LB_NAMESPACE:-kube-system}
+    validate_namespace "$LB_NAMESPACE"
+    break
+done
+
+# Container Image for the Application
+while true; do
+    read -p "Enter the container image for the application (default: public.ecr.aws/l6m2t8p7/docker-2048:latest): " APP_IMAGE
+    APP_IMAGE=${APP_IMAGE:-public.ecr.aws/l6m2t8p7/docker-2048:latest}
+    if [[ -z "$APP_IMAGE" ]]; then
+        echo "Container image cannot be empty. Please try again."
+    else
+        break
+    fi
+done
 
 # Step 1: Verify cluster access
 log "Verifying cluster access..."
@@ -143,10 +250,10 @@ kubectl get deployment -n "$LB_NAMESPACE" aws-load-balancer-controller || {
 }
 log "AWS Load Balancer Controller verified"
 
-# Step 5: Deploy the 2048 game
-log "Creating 2048 game manifest..."
+# Step 5: Deploy the application
+log "Creating application manifest..."
 manifest_file=$(mktemp) || {
-    log "ERROR: Failed to create temporary file for 2048 manifest"
+    log "ERROR: Failed to create temporary file for application manifest"
     cleanup
 }
 TEMP_FILES+=("$manifest_file")
@@ -156,35 +263,35 @@ cat > "$manifest_file" << EOF
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: game-2048
+  name: $APP_NAMESPACE
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: game-2048
-  name: deployment-2048
+  namespace: $APP_NAMESPACE
+  name: deployment-app
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: app-2048
+      app.kubernetes.io/name: app
   replicas: 5
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: app-2048
+        app.kubernetes.io/name: app
     spec:
       containers:
-      - image: public.ecr.aws/l6m2t8p7/docker-2048:latest
+      - image: $APP_IMAGE
         imagePullPolicy: Always
-        name: app-2048
+        name: app
         ports:
         - containerPort: 80
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  namespace: game-2048
-  name: service-2048
+  namespace: $APP_NAMESPACE
+  name: service-app
 spec:
   ports:
     - port: 80
@@ -192,13 +299,13 @@ spec:
       protocol: TCP
   type: NodePort
   selector:
-    app.kubernetes.io/name: app-2048
+    app.kubernetes.io/name: app
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  namespace: game-2048
-  name: ingress-2048
+  namespace: $APP_NAMESPACE
+  name: ingress-app
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
@@ -211,22 +318,22 @@ spec:
           pathType: Prefix
           backend:
             service:
-              name: service-2048
+              name: service-app
               port:
                 number: 80
 EOF
 
-log "Deploying the 2048 game..."
+log "Deploying the application..."
 retry 3 10 kubectl apply -f "$manifest_file"
-log "2048 game deployed successfully"
+log "Application deployed successfully"
 rm -f "$manifest_file"
 
 # Step 6: Get Ingress URL
 log "Waiting for Ingress to be ready (up to 15 minutes)..."
 for i in {1..30}; do # Increased to 15 minutes (30 * 30s)
-    INGRESS_URL=$(kubectl get ingress -n "$APP_NAMESPACE" ingress-2048 -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+    INGRESS_URL=$(kubectl get ingress -n "$APP_NAMESPACE" ingress-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
     if [ -n "$INGRESS_URL" ]; then
-        log "2048 game is accessible at: http://$INGRESS_URL"
+        log "Application is accessible at: http://$INGRESS_URL"
         break
     fi
     log "Ingress not ready, retrying in 30 seconds..."
@@ -234,7 +341,7 @@ for i in {1..30}; do # Increased to 15 minutes (30 * 30s)
 done
 if [ -z "$INGRESS_URL" ]; then
     log "ERROR: Could not retrieve Ingress URL after retries"
-    kubectl describe ingress -n "$APP_NAMESPACE" ingress-2048 >&2
+    kubectl describe ingress -n "$APP_NAMESPACE" ingress-app >&2
     cleanup
 fi
 
@@ -243,4 +350,4 @@ for file in "${TEMP_FILES[@]}"; do
     rm -f "$file" 2>/dev/null
 done
 
-log "EKS application setup with 2048 game completed successfully."
+log "EKS application setup completed successfully."

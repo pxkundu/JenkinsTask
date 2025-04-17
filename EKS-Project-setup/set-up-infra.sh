@@ -67,7 +67,6 @@ cleanup() {
 # Function to check for warnings in command output
 check_warnings() {
     local cmd_output=$1
-    # Only trigger cleanup on ERROR, not WARNING or DEPRECATION
     if grep -Ei "ERROR" "$cmd_output" >/dev/null; then
         log "Error detected in command output. Initiating cleanup..."
         cat "$cmd_output" >&2
@@ -165,10 +164,42 @@ check_aws_credentials() {
     fi
 }
 
+# Function to validate AWS region
+validate_region() {
+    local region=$1
+    log "Validating AWS region: $region..."
+    if aws ec2 describe-regions --region-names "$region" --query 'Regions[0].RegionName' --output text 2>/dev/null | grep -q "$region"; then
+        log "Region $region is valid"
+        return 0
+    else
+        log "ERROR: Invalid AWS region: $region"
+        cleanup
+    fi
+}
+
+# Function to validate VPC ID
+validate_vpc() {
+    local vpc_id=$1
+    local region=$2
+    log "Validating VPC ID: $vpc_id..."
+    if [[ ! "$vpc_id" =~ ^vpc-[0-9a-f]{17}$ ]]; then
+        log "ERROR: VPC ID $vpc_id does not match expected format (e.g., vpc-0e13ae6de03f62cd5)"
+        cleanup
+    fi
+    if aws ec2 describe-vpcs --vpc-ids "$vpc_id" --region "$region" --query 'Vpcs[0].VpcId' --output text 2>/dev/null | grep -q "$vpc_id"; then
+        log "VPC ID $vpc_id is valid"
+        return 0
+    else
+        log "ERROR: VPC ID $vpc_id does not exist in region $region"
+        cleanup
+    fi
+}
+
 # Function to validate subnets
 validate_subnets() {
     local vpc_id=$1
     local subnets=$2
+    local region=$3
     log "Validating subnets: $subnets"
     local output
     output=$(mktemp) || {
@@ -178,16 +209,22 @@ validate_subnets() {
     TEMP_FILES+=("$output")
     IFS=',' read -ra SUBNET_ARRAY <<< "$subnets"
     for subnet in "${SUBNET_ARRAY[@]}"; do
-        # Check if subnet belongs to the VPC
-        if ! aws ec2 describe-subnets --subnet-ids "$subnet" --query 'Subnets[0].VpcId' --output text 2> "$output" | grep -q "$vpc_id"; then
-            log "ERROR: Subnet $subnet does not belong to VPC $vpc_id or is invalid"
+        # Validate subnet ID format
+        if [[ ! "$subnet" =~ ^subnet-[0-9a-f]{17}$ ]]; then
+            log "ERROR: Subnet ID $subnet does not match expected format (e.g., subnet-07b231970a5ea0a3a)"
+            rm -f "$output"
+            cleanup
+        fi
+        # Check if subnet exists and belongs to the VPC
+        if ! aws ec2 describe-subnets --subnet-ids "$subnet" --region "$region" --query 'Subnets[0].VpcId' --output text 2> "$output" | grep -q "$vpc_id"; then
+            log "ERROR: Subnet $subnet does not belong to VPC $vpc_id or is invalid in region $region"
             cat "$output" >&2
             rm -f "$output"
             cleanup
         fi
         check_warnings "$output"
         # Check if subnet is private (no direct route to IGW)
-        if aws ec2 describe-route-tables --filters Name=association.subnet-id,Values="$subnet" --query 'RouteTables[*].Routes[?DestinationCidrBlock==`0.0.0.0/0` && GatewayId!=`null`]' --output text 2> "$output" | grep -q "igw-"; then
+        if aws ec2 describe-route-tables --filters Name=association.subnet-id,Values="$subnet" --region "$region" --query 'RouteTables[*].Routes[?DestinationCidrBlock==`0.0.0.0/0` && GatewayId!=`null`]' --output text 2> "$output" | grep -q "igw-"; then
             log "ERROR: Subnet $subnet is public, but private subnets are required for Fargate"
             cat "$output" >&2
             rm -f "$output"
@@ -195,17 +232,17 @@ validate_subnets() {
         fi
         check_warnings "$output"
         # Check for NAT gateway (optional, log warning if missing)
-        route_table_id=$(aws ec2 describe-route-tables --filters Name=association.subnet-id,Values="$subnet" --query 'RouteTables[0].RouteTableId' --output text 2> "$output")
+        route_table_id=$(aws ec2 describe-route-tables --filters Name=association.subnet-id,Values="$subnet" --region "$region" --query 'RouteTables[0].RouteTableId' --output text 2> "$output")
         check_warnings "$output"
         if [ -n "$route_table_id" ]; then
-            if ! aws ec2 describe-route-tables --route-table-ids "$route_table_id" --query 'RouteTables[0].Routes[?DestinationCidrBlock==`0.0.0.0/0` && NatGatewayId!=`null`]' --output text 2> "$output" | grep -q "nat-"; then
+            if ! aws ec2 describe-route-tables --route-table-ids "$route_table_id" --region "$region" --query 'RouteTables[0].Routes[?DestinationCidrBlock==`0.0.0.0/0` && NatGatewayId!=`null`]' --output text 2> "$output" | grep -q "nat-"; then
                 log "WARNING: Subnet $subnet does not have a route to a NAT gateway, pods may not be able to access the internet"
             fi
             check_warnings "$output"
         fi
     done
     # Check for availability zone coverage
-    az_count=$(aws ec2 describe-subnets --subnet-ids "${SUBNET_ARRAY[@]}" --query 'length(Subnets[*].AvailabilityZone)' --output text 2> "$output")
+    az_count=$(aws ec2 describe-subnets --subnet-ids "${SUBNET_ARRAY[@]}" --region "$region" --query 'length(Subnets[*].AvailabilityZone)' --output text 2> "$output")
     check_warnings "$output"
     if [ "$az_count" -lt 2 ]; then
         log "WARNING: Subnets cover only $az_count availability zone(s), at least 2 are recommended for high availability"
@@ -215,15 +252,120 @@ validate_subnets() {
     return 0
 }
 
-# Configuration variables
-CLUSTER_NAME="partha-game-cluster"
-REGION="us-east-1"
-VPC_ID="vpc-0e13ae6de03f62cd5"
-PRIVATE_SUBNETS="subnet-07b231970a5ea0a3a,subnet-066008bd872659833"
-APP_NAMESPACE="game-2048"
-LB_NAMESPACE="kube-system"
+# Function to validate Kubernetes version
+validate_k8s_version() {
+    local k8s_version=$1
+    local region=$2
+    log "Validating Kubernetes version: $k8s_version..."
+    if [[ ! "$k8s_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        log "ERROR: Kubernetes version $k8s_version does not match expected format (e.g., 1.32)"
+        cleanup
+    fi
+    # Check if the version is supported by EKS
+    if aws eks describe-addon-versions --kubernetes-version "$k8s_version" --region "$region" --query 'addons[0]' --output text 2>/dev/null; then
+        log "Kubernetes version $k8s_version is supported"
+        return 0
+    else
+        log "ERROR: Kubernetes version $k8s_version is not supported by EKS in region $region"
+        cleanup
+    fi
+}
+
+# Function to validate namespace name
+validate_namespace() {
+    local namespace=$1
+    log "Validating namespace: $namespace..."
+    if [[ ! "$namespace" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+        log "ERROR: Namespace $namespace is invalid. It must be lowercase, start and end with alphanumeric characters, and can contain hyphens in between."
+        cleanup
+    fi
+    if [ ${#namespace} -gt 63 ]; then
+        log "ERROR: Namespace $namespace is too long. It must be 63 characters or less."
+        cleanup
+    fi
+    log "Namespace $namespace is valid"
+}
+
+# Prompt for user inputs
+echo "Please provide the following details to set up the EKS cluster:"
+echo ""
+
+# Cluster Name
+while true; do
+    read -p "Enter the EKS cluster name (e.g., my-game-cluster): " CLUSTER_NAME
+    if [[ -z "$CLUSTER_NAME" ]]; then
+        echo "Cluster name cannot be empty. Please try again."
+    elif [[ ! "$CLUSTER_NAME" =~ ^[a-zA-Z0-9-]+$ ]]; then
+        echo "Cluster name can only contain alphanumeric characters and hyphens. Please try again."
+    elif [ ${#CLUSTER_NAME} -gt 100 ]; then
+        echo "Cluster name is too long. It must be 100 characters or less. Please try again."
+    else
+        break
+    fi
+done
+
+# AWS Region
+while true; do
+    read -p "Enter the AWS region (e.g., us-east-1): " REGION
+    if [[ -z "$REGION" ]]; then
+        echo "Region cannot be empty. Please try again."
+    else
+        validate_region "$REGION"
+        break
+    fi
+done
+
+# VPC ID
+while true; do
+    read -p "Enter the VPC ID (e.g., vpc-0e13ae6de03f62cd5): " VPC_ID
+    if [[ -z "$VPC_ID" ]]; then
+        echo "VPC ID cannot be empty. Please try again."
+    else
+        validate_vpc "$VPC_ID" "$REGION"
+        break
+    fi
+done
+
+# Private Subnets
+while true; do
+    read -p "Enter the private subnet IDs (comma-separated, e.g., subnet-07b231970a5ea0a3a,subnet-066008bd872659833): " PRIVATE_SUBNETS
+    if [[ -z "$PRIVATE_SUBNETS" ]]; then
+        echo "Private subnet IDs cannot be empty. Please try again."
+    else
+        validate_subnets "$VPC_ID" "$PRIVATE_SUBNETS" "$REGION"
+        break
+    fi
+done
+
+# Kubernetes Version
+while true; do
+    read -p "Enter the Kubernetes version (e.g., 1.32): " K8S_VERSION
+    if [[ -z "$K8S_VERSION" ]]; then
+        echo "Kubernetes version cannot be empty. Please try again."
+    else
+        validate_k8s_version "$K8S_VERSION" "$REGION"
+        break
+    fi
+done
+
+# Application Namespace
+while true; do
+    read -p "Enter the namespace for the application (default: game-2048): " APP_NAMESPACE
+    APP_NAMESPACE=${APP_NAMESPACE:-game-2048}
+    validate_namespace "$APP_NAMESPACE"
+    break
+done
+
+# Load Balancer Namespace
+while true; do
+    read -p "Enter the namespace for the load balancer controller (default: kube-system): " LB_NAMESPACE
+    LB_NAMESPACE=${LB_NAMESPACE:-kube-system}
+    validate_namespace "$LB_NAMESPACE"
+    break
+done
+
+# Additional variables
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "unknown")
-K8S_VERSION="1.32" # Updated to a likely supported version as of April 2025
 TIMESTAMP=$(date +%s)
 IAM_POLICY_NAME="AWSLoadBalancerControllerIAMPolicy-$TIMESTAMP"
 
@@ -282,11 +424,10 @@ check_and_install_command "helm" "
 
 check_aws_credentials
 
-# Step 2: Validate subnets
-validate_subnets "$VPC_ID" "$PRIVATE_SUBNETS"
+# Step 2: Validate subnets (already done during input validation)
 
 # Step 3: Create EKS cluster with Fargate
-log "Creating EKS cluster: $CLUSTER_NAME with Kubernetes version $K8S_VERSION"
+log "Creating EKS cluster: $CLUSTER_NAME with Kubernetes version $K8S_VERSION in region $REGION"
 retry 3 30 eksctl create cluster \
     --name "$CLUSTER_NAME" \
     --region "$REGION" \
@@ -332,30 +473,30 @@ retry 3 30 eksctl create addon \
     --version latest
 log "Successfully created addon: coredns"
 
-# Step 6: Create namespace for the 2048 game
+# Step 6: Create namespace for the application
 log "Creating namespace: $APP_NAMESPACE"
 kubectl create namespace "$APP_NAMESPACE" || log "Namespace $APP_NAMESPACE already exists"
 log "Namespace created successfully"
 
-# Step 7: Create Fargate profile for the 2048 game
-log "Creating Fargate profile for the 2048 game..."
+# Step 7: Create Fargate profile for the application
+log "Creating Fargate profile for the application..."
 retry 3 30 eksctl create fargateprofile \
     --cluster "$CLUSTER_NAME" \
     --region "$REGION" \
-    --name "game-profile" \
+    --name "app-profile" \
     --namespace "$APP_NAMESPACE"
 log "Fargate profile created successfully"
-CREATED_FARGATE_PROFILE="game-profile"
+CREATED_FARGATE_PROFILE="app-profile"
 
-# Step 7.5: Create Fargate profile for kube-system (for AWS Load Balancer Controller)
-log "Creating Fargate profile for kube-system..."
+# Step 7.5: Create Fargate profile for load balancer namespace
+log "Creating Fargate profile for $LB_NAMESPACE..."
 retry 3 30 eksctl create fargateprofile \
     --cluster "$CLUSTER_NAME" \
     --region "$REGION" \
-    --name "kube-system-profile" \
+    --name "lb-profile" \
     --namespace "$LB_NAMESPACE"
-log "Fargate profile for kube-system created successfully"
-CREATED_FARGATE_PROFILE="kube-system-profile"
+log "Fargate profile for $LB_NAMESPACE created successfully"
+CREATED_FARGATE_PROFILE="lb-profile"
 
 # Step 8: Create namespace for AWS Load Balancer Controller
 log "Creating namespace: $LB_NAMESPACE"
@@ -478,7 +619,7 @@ cat > aws-lb-controller-policy.json << EOF
             "Condition": {
                 "Null": {
                     "aws:RequestTag/elbv2.k8s.aws/cluster": "true",
-                    "aws:ResourceTag/el parabolic v2.k8s.aws/cluster": "false"
+                    "aws:ResourceTag/elbv2.k8s.aws/cluster": "false"
                 }
             }
         },
@@ -698,3 +839,4 @@ for file in "${TEMP_FILES[@]}"; do
 done
 
 log "EKS infrastructure setup completed successfully. Run set-up-app.sh next."
+log "Please use the same values for cluster name, region, VPC ID, and namespaces when running set-up-app.sh."
