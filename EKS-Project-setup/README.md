@@ -66,7 +66,7 @@ Container Image (default: public.ecr.aws/l6m2t8p7/docker-2048:latest): The conta
 Duration: ~5-15 minutes, depending on ALB provisioning.
 Step 5: Access the Application
 After set-up-app.sh completes, it will output the ALB URL for your application, e.g.:
-Application is accessible at: http://k8s-game2048-ingress2-ff4d192d60-1096844032.us-east-1.elb.amazonaws.com
+Application is accessible at: http://k8s-game2048-ingress2-ff4d192d60-652303599.us-east-1.elb.amazonaws.com/ 
 
 Open this URL in a browser to access your application.
 Verification
