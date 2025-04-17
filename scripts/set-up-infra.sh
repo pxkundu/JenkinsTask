@@ -16,6 +16,20 @@ CREATED_IAM_POLICY=""
 TEMP_FILES=()
 WARNING_LOG="warnings.log"
 
+# Static configuration values
+CLUSTER_NAME="game-cluster-partha"
+REGION="us-east-1"
+VPC_ID="vpc-0e13ae6de03f62cd5"
+PRIVATE_SUBNETS="subnet-07b231970a5ea0a3a,subnet-066008bd872659833"
+K8S_VERSION="1.32"
+APP_NAMESPACE="game-2048"
+LB_NAMESPACE="kube-system"
+
+# Additional variables
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "unknown")
+TIMESTAMP=$(date +%s)
+IAM_POLICY_NAME="AWSLoadBalancerControllerIAMPolicy-$TIMESTAMP"
+
 # Cleanup function to destroy all created resources
 cleanup() {
     log "Cleaning up resources due to error or warning..."
@@ -67,7 +81,6 @@ cleanup() {
 # Function to check for warnings in command output
 check_warnings() {
     local cmd_output=$1
-    # Only trigger cleanup on ERROR, not WARNING or DEPRECATION
     if grep -Ei "ERROR" "$cmd_output" >/dev/null; then
         log "Error detected in command output. Initiating cleanup..."
         cat "$cmd_output" >&2
@@ -165,68 +178,6 @@ check_aws_credentials() {
     fi
 }
 
-# Function to validate subnets
-validate_subnets() {
-    local vpc_id=$1
-    local subnets=$2
-    log "Validating subnets: $subnets"
-    local output
-    output=$(mktemp) || {
-        log "ERROR: Failed to create temporary file with mktemp"
-        cleanup
-    }
-    TEMP_FILES+=("$output")
-    IFS=',' read -ra SUBNET_ARRAY <<< "$subnets"
-    for subnet in "${SUBNET_ARRAY[@]}"; do
-        # Check if subnet belongs to the VPC
-        if ! aws ec2 describe-subnets --subnet-ids "$subnet" --query 'Subnets[0].VpcId' --output text 2> "$output" | grep -q "$vpc_id"; then
-            log "ERROR: Subnet $subnet does not belong to VPC $vpc_id or is invalid"
-            cat "$output" >&2
-            rm -f "$output"
-            cleanup
-        fi
-        check_warnings "$output"
-        # Check if subnet is private (no direct route to IGW)
-        if aws ec2 describe-route-tables --filters Name=association.subnet-id,Values="$subnet" --query 'RouteTables[*].Routes[?DestinationCidrBlock==`0.0.0.0/0` && GatewayId!=`null`]' --output text 2> "$output" | grep -q "igw-"; then
-            log "ERROR: Subnet $subnet is public, but private subnets are required for Fargate"
-            cat "$output" >&2
-            rm -f "$output"
-            cleanup
-        fi
-        check_warnings "$output"
-        # Check for NAT gateway (optional, log warning if missing)
-        route_table_id=$(aws ec2 describe-route-tables --filters Name=association.subnet-id,Values="$subnet" --query 'RouteTables[0].RouteTableId' --output text 2> "$output")
-        check_warnings "$output"
-        if [ -n "$route_table_id" ]; then
-            if ! aws ec2 describe-route-tables --route-table-ids "$route_table_id" --query 'RouteTables[0].Routes[?DestinationCidrBlock==`0.0.0.0/0` && NatGatewayId!=`null`]' --output text 2> "$output" | grep -q "nat-"; then
-                log "WARNING: Subnet $subnet does not have a route to a NAT gateway, pods may not be able to access the internet"
-            fi
-            check_warnings "$output"
-        fi
-    done
-    # Check for availability zone coverage
-    az_count=$(aws ec2 describe-subnets --subnet-ids "${SUBNET_ARRAY[@]}" --query 'length(Subnets[*].AvailabilityZone)' --output text 2> "$output")
-    check_warnings "$output"
-    if [ "$az_count" -lt 2 ]; then
-        log "WARNING: Subnets cover only $az_count availability zone(s), at least 2 are recommended for high availability"
-    fi
-    log "Subnets validated successfully"
-    rm -f "$output"
-    return 0
-}
-
-# Configuration variables
-CLUSTER_NAME="partha-game-cluster"
-REGION="us-east-1"
-VPC_ID="vpc-0e13ae6de03f62cd5"
-PRIVATE_SUBNETS="subnet-07b231970a5ea0a3a,subnet-066008bd872659833"
-APP_NAMESPACE="game-2048"
-LB_NAMESPACE="kube-system"
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "unknown")
-K8S_VERSION="1.32" # Updated to a likely supported version as of April 2025
-TIMESTAMP=$(date +%s)
-IAM_POLICY_NAME="AWSLoadBalancerControllerIAMPolicy-$TIMESTAMP"
-
 # Validate IAM policy name length
 if [ ${#IAM_POLICY_NAME} -gt 128 ]; then
     log "ERROR: IAM policy name $IAM_POLICY_NAME exceeds 128 characters"
@@ -282,11 +233,8 @@ check_and_install_command "helm" "
 
 check_aws_credentials
 
-# Step 2: Validate subnets
-validate_subnets "$VPC_ID" "$PRIVATE_SUBNETS"
-
-# Step 3: Create EKS cluster with Fargate
-log "Creating EKS cluster: $CLUSTER_NAME with Kubernetes version $K8S_VERSION"
+# Step 2: Create EKS cluster with Fargate
+log "Creating EKS cluster: $CLUSTER_NAME with Kubernetes version $K8S_VERSION in region $REGION"
 retry 3 30 eksctl create cluster \
     --name "$CLUSTER_NAME" \
     --region "$REGION" \
@@ -297,12 +245,12 @@ retry 3 30 eksctl create cluster \
 log "EKS cluster created successfully"
 CREATED_CLUSTER="$CLUSTER_NAME"
 
-# Step 4: Enable IAM OIDC provider
+# Step 3: Enable IAM OIDC provider
 log "Enabling IAM OIDC provider..."
 retry 3 10 eksctl utils associate-iam-oidc-provider --region="$REGION" --cluster="$CLUSTER_NAME" --approve
 log "IAM OIDC provider enabled successfully"
 
-# Step 5: Create default addons with latest compatible versions
+# Step 4: Create default addons with latest compatible versions
 log "Creating default addons (metrics-server, vpc-cni, kube-proxy, coredns)..."
 retry 3 30 eksctl create addon \
     --cluster "$CLUSTER_NAME" \
@@ -332,37 +280,37 @@ retry 3 30 eksctl create addon \
     --version latest
 log "Successfully created addon: coredns"
 
-# Step 6: Create namespace for the 2048 game
+# Step 5: Create namespace for the application
 log "Creating namespace: $APP_NAMESPACE"
 kubectl create namespace "$APP_NAMESPACE" || log "Namespace $APP_NAMESPACE already exists"
 log "Namespace created successfully"
 
-# Step 7: Create Fargate profile for the 2048 game
-log "Creating Fargate profile for the 2048 game..."
+# Step 6: Create Fargate profile for the application
+log "Creating Fargate profile for the application..."
 retry 3 30 eksctl create fargateprofile \
     --cluster "$CLUSTER_NAME" \
     --region "$REGION" \
-    --name "game-profile" \
+    --name "app-profile" \
     --namespace "$APP_NAMESPACE"
 log "Fargate profile created successfully"
-CREATED_FARGATE_PROFILE="game-profile"
+CREATED_FARGATE_PROFILE="app-profile"
 
-# Step 7.5: Create Fargate profile for kube-system (for AWS Load Balancer Controller)
-log "Creating Fargate profile for kube-system..."
+# Step 6.5: Create Fargate profile for load balancer namespace
+log "Creating Fargate profile for $LB_NAMESPACE..."
 retry 3 30 eksctl create fargateprofile \
     --cluster "$CLUSTER_NAME" \
     --region "$REGION" \
-    --name "kube-system-profile" \
+    --name "lb-profile" \
     --namespace "$LB_NAMESPACE"
-log "Fargate profile for kube-system created successfully"
-CREATED_FARGATE_PROFILE="kube-system-profile"
+log "Fargate profile for $LB_NAMESPACE created successfully"
+CREATED_FARGATE_PROFILE="lb-profile"
 
-# Step 8: Create namespace for AWS Load Balancer Controller
+# Step 7: Create namespace for AWS Load Balancer Controller
 log "Creating namespace: $LB_NAMESPACE"
 kubectl create namespace "$LB_NAMESPACE" || log "Namespace $LB_NAMESPACE already exists"
 log "Namespace created successfully"
 
-# Step 9: Create IAM policy for AWS Load Balancer Controller with a unique name
+# Step 8: Create IAM policy for AWS Load Balancer Controller with a unique name
 log "Creating IAM policy for AWS Load Balancer Controller with name $IAM_POLICY_NAME..."
 cat > aws-lb-controller-policy.json << EOF
 {
@@ -478,7 +426,7 @@ cat > aws-lb-controller-policy.json << EOF
             "Condition": {
                 "Null": {
                     "aws:RequestTag/elbv2.k8s.aws/cluster": "true",
-                    "aws:ResourceTag/el parabolic v2.k8s.aws/cluster": "false"
+                    "aws:ResourceTag/elbv2.k8s.aws/cluster": "false"
                 }
             }
         },
@@ -645,7 +593,7 @@ log "IAM policy created successfully with ARN: $IAM_POLICY_ARN"
 CREATED_IAM_POLICY="$IAM_POLICY_ARN"
 rm -f "$policy_output"
 
-# Step 10: Create IAM service account for AWS Load Balancer Controller
+# Step 9: Create IAM service account for AWS Load Balancer Controller
 log "Creating IAM service account for AWS Load Balancer Controller..."
 ROLE_NAME="EKSLoadBalancerControllerRole"
 if aws iam get-role --role-name "$ROLE_NAME" &> /dev/null; then

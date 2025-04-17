@@ -12,6 +12,14 @@ log() {
 TEMP_FILES=()
 WARNING_LOG="warnings.log"
 
+# Static configuration values
+CLUSTER_NAME="partha-game-cluster"
+REGION="us-east-1"
+VPC_ID="vpc-0e13ae6de03f62cd5"
+APP_NAMESPACE="game-2048"
+LB_NAMESPACE="kube-system"
+APP_IMAGE="public.ecr.aws/l6m2t8p7/docker-2048:latest"
+
 # Cleanup function to destroy resources
 cleanup() {
     log "Cleaning up resources due to error or warning..."
@@ -77,13 +85,6 @@ retry() {
 # Trap errors and warnings
 trap cleanup ERR
 
-# Configuration variables
-CLUSTER_NAME="partha-game-cluster"
-REGION="us-east-1"
-VPC_ID="vpc-0e13ae6de03f62cd5"
-APP_NAMESPACE="game-2048"
-LB_NAMESPACE="kube-system"
-
 # Step 1: Verify cluster access
 log "Verifying cluster access..."
 if ! retry 3 10 kubectl get nodes &> /dev/null; then
@@ -143,10 +144,10 @@ kubectl get deployment -n "$LB_NAMESPACE" aws-load-balancer-controller || {
 }
 log "AWS Load Balancer Controller verified"
 
-# Step 5: Deploy the 2048 game
-log "Creating 2048 game manifest..."
+# Step 5: Deploy the application
+log "Creating application manifest..."
 manifest_file=$(mktemp) || {
-    log "ERROR: Failed to create temporary file for 2048 manifest"
+    log "ERROR: Failed to create temporary file for application manifest"
     cleanup
 }
 TEMP_FILES+=("$manifest_file")
@@ -156,12 +157,12 @@ cat > "$manifest_file" << EOF
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: game-2048
+  name: $APP_NAMESPACE
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: game-2048
+  namespace: $APP_NAMESPACE
   name: deployment-2048
 spec:
   selector:
@@ -174,16 +175,16 @@ spec:
         app.kubernetes.io/name: app-2048
     spec:
       containers:
-      - image: public.ecr.aws/l6m2t8p7/docker-2048:latest
+      - image: $APP_IMAGE
         imagePullPolicy: Always
-        name: app-2048
+        name: app
         ports:
         - containerPort: 80
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  namespace: game-2048
+  namespace: $APP_NAMESPACE
   name: service-2048
 spec:
   ports:
@@ -197,7 +198,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  namespace: game-2048
+  namespace: $APP_NAMESPACE
   name: ingress-2048
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
@@ -216,9 +217,9 @@ spec:
                 number: 80
 EOF
 
-log "Deploying the 2048 game..."
+log "Deploying the application..."
 retry 3 10 kubectl apply -f "$manifest_file"
-log "2048 game deployed successfully"
+log "Application deployed successfully"
 rm -f "$manifest_file"
 
 # Step 6: Get Ingress URL
@@ -226,7 +227,7 @@ log "Waiting for Ingress to be ready (up to 15 minutes)..."
 for i in {1..30}; do # Increased to 15 minutes (30 * 30s)
     INGRESS_URL=$(kubectl get ingress -n "$APP_NAMESPACE" ingress-2048 -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
     if [ -n "$INGRESS_URL" ]; then
-        log "2048 game is accessible at: http://$INGRESS_URL"
+        log "Application is accessible at: http://$INGRESS_URL"
         break
     fi
     log "Ingress not ready, retrying in 30 seconds..."
@@ -243,4 +244,4 @@ for file in "${TEMP_FILES[@]}"; do
     rm -f "$file" 2>/dev/null
 done
 
-log "EKS application setup with 2048 game completed successfully."
+log "EKS application setup completed successfully."
