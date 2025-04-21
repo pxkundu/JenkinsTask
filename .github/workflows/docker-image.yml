@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: self-hosted  # Or [self-hosted, amazon-linux-2] if labeled
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
