@@ -12,7 +12,6 @@ log() {
 run_command() {
     local cmd="$@"
     local output_file
-    # Explicitly check mktemp to avoid compound command syntax issues
     output_file=$(mktemp)
     if [ $? -ne 0 ]; then
         log "ERROR" "Failed to create temp file"
@@ -27,10 +26,10 @@ run_command() {
         rm -f "$output_file"
         return 0
     else
-        log "ERROR" "Command failed. Full output in $output_file"
+        log "WARNING" "Command failed, but continuing cleanup. Full output in $output_file"
         cat "$output_file" >&2
         rm -f "$output_file"
-        cleanup
+        return 1
     fi
 }
 
@@ -114,7 +113,6 @@ retry() {
     shift 2
     local attempt=1
     local cmd_output
-    # Use explicit mktemp check to avoid syntax issues
     cmd_output=$(mktemp)
     if [ $? -ne 0 ]; then
         log "ERROR" "Failed to create temp file"
@@ -245,7 +243,7 @@ CREATED_CLUSTER="$CLUSTER_NAME"
 
 # Enable IAM OIDC provider
 log "INFO" "Enabling IAM OIDC provider..."
-retry 3 10 "eksctl utils associate-iam-oidc-provider --region=\"$REGION\" --cluster=\"$CLUSTER_NAME\" --approve"
+retry 3 10 "eksctl utils associate-iam-oidc-provider --region=\"$REGION\" --cluster \"$CLUSTER_NAME\" --approve"
 log "INFO" "IAM OIDC provider enabled successfully"
 
 # Create default addons
@@ -531,23 +529,66 @@ if [ $? -ne 0 ]; then
     cleanup
 fi
 TEMP_FILES+=("$policy_output")
-IAM_POLICY_ARN=$(retry 3 10 "aws iam create-policy \
-    --policy-name \"$IAM_POLICY_NAME\" \
-    --policy-document file://aws-lb-controller-policy.json \
-    --query 'Policy.Arn' \
-    --output text" 2>"$policy_output") || {
-        log "ERROR" "Failed to create IAM policy after retries"
+# Validate policy JSON if jq is available
+if command -v jq >/dev/null 2>&1; then
+    log "INFO" "Validating IAM policy JSON with jq..."
+    if ! jq empty aws-lb-controller-policy.json >/dev/null 2>"$policy_output"; then
+        log "ERROR" "Invalid IAM policy JSON"
         cat "$policy_output" >&2
         rm -f "$policy_output"
         cleanup
-    }
-check_warnings "$policy_output"
-if [[ ! "$IAM_POLICY_ARN" =~ ^arn:aws:iam::[0-9]{12}:policy/[A-Za-z0-9-]+ ]]; then
-    log "ERROR" "Invalid IAM policy ARN: $IAM_POLICY_ARN"
-    rm -f "$policy_output"
-    cleanup
+    fi
+else
+    log "WARNING" "jq not found, skipping IAM policy JSON validation. Ensure the JSON is valid to avoid AWS errors."
 fi
-log "INFO" "IAM policy created successfully with ARN: $IAM_POLICY_ARN"
+# Check if policy already exists
+log "INFO" "Checking for existing IAM policy $IAM_POLICY_NAME..."
+existing_policy_arn=$(aws iam list-policies --query "Policies[?PolicyName=='$IAM_POLICY_NAME'].Arn" --output text 2>"$policy_output" || true)
+if [ -n "$existing_policy_arn" ]; then
+    log "INFO" "Policy $IAM_POLICY_NAME already exists with ARN: $existing_policy_arn"
+    log "INFO" "Do you want to delete the existing policy and recreate it? (y/N)"
+    read -r response
+    if [[ "$response" =~ ^[Yy]$ ]]; then
+        run_command "aws iam delete-policy --policy-arn \"$existing_policy_arn\""
+        log "INFO" "Deleted existing policy. Recreating..."
+    else
+        IAM_POLICY_ARN="$existing_policy_arn"
+        log "INFO" "Reusing existing policy ARN: $IAM_POLICY_ARN"
+    fi
+fi
+# Create new policy if needed
+if [ -z "$IAM_POLICY_ARN" ]; then
+    log "INFO" "Creating new IAM policy with name $IAM_POLICY_NAME..."
+    max_attempts=3
+    attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        log "INFO" "Attempt $attempt of $max_attempts to create IAM policy..."
+        IAM_POLICY_ARN=$(aws iam create-policy \
+            --policy-name "$IAM_POLICY_NAME" \
+            --policy-document file://aws-lb-controller-policy.json \
+            --query 'Policy.Arn' \
+            --output text 2>"$policy_output") && break
+        log "ERROR" "Failed to create IAM policy on attempt $attempt. Error details:"
+        cat "$policy_output" >&2
+        if [ $attempt -eq $max_attempts ]; then
+            rm -f "$policy_output"
+            log "INFO" "IAM policy creation failed after $max_attempts attempts, but cluster and other resources are intact. Run cleanup.sh to remove resources if needed."
+            exit 1
+        fi
+        log "INFO" "Retrying in 10 seconds..."
+        sleep 10
+        ((attempt++))
+    done
+fi
+# Validate ARN
+if [[ ! "$IAM_POLICY_ARN" =~ ^arn:aws:iam::[0-9]{12}:policy/[A-Za-z0-9-]+ ]]; then
+    log "ERROR" "Invalid IAM policy ARN: $IAM_POLICY_ARN. Error details:"
+    cat "$policy_output" >&2
+    rm -f "$policy_output"
+    log "INFO" "IAM policy creation failed, but cluster and other resources are intact. Run cleanup.sh to remove resources if needed."
+    exit 1
+fi
+log "INFO" "IAM policy created or reused successfully with ARN: $IAM_POLICY_ARN"
 CREATED_IAM_POLICY="$IAM_POLICY_ARN"
 rm -f "$policy_output"
 
