@@ -1,0 +1,42 @@
+```yaml
+    ---
+    - name: Monitor Kubernetes Worker Node Health
+      hosts: k8s_workers
+      become: yes
+      tasks:
+        - name: Install sysstat for monitoring
+          ansible.builtin.yum:
+            name: sysstat
+            state: present
+
+        - name: Collect CPU and memory usage
+          ansible.builtin.shell: |
+            mpstat 1 1 | grep Average | awk '{print "CPU Usage: " 100-$8 "%"}' > /var/log/node_health.log
+            free -m | grep Mem | awk '{print "Memory Usage: " $3/$2*100 "%"}' >> /var/log/node_health.log
+          changed_when: true
+
+        - name: Collect disk usage
+          ansible.builtin.shell: |
+            df -h / | grep -v Filesystem | awk '{print "Disk Usage: " $5}' >> /var/log/node_health.log
+          changed_when: true
+
+        - name: Check Kubernetes node status
+          ansible.builtin.command: kubectl get nodes k8-worker-partha --no-headers
+          delegate_to: localhost
+          register: node_status
+          changed_when: false
+          run_once: true
+
+        - name: Log node status
+          ansible.builtin.lineinfile:
+            path: /var/log/node_health.log
+            line: "Kubernetes Status: {{ node_status.stdout }}"
+            create: yes
+            mode: '0644'
+
+        - name: Fetch health log
+          ansible.builtin.fetch:
+            src: /var/log/node_health.log
+            dest: ./node_health_{{ inventory_hostname }}.log
+            flat: yes
+    ```

@@ -1,0 +1,41 @@
+```yaml
+    ---
+    - name: Install Kubernetes Tools on Worker Node
+      hosts: k8s_workers
+      become: yes
+      tasks:
+        - name: Install kubectl
+          ansible.builtin.shell: |
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            mv kubectl /usr/local/bin/
+          args:
+            creates: /usr/local/bin/kubectl
+
+        - name: Verify kubectl version
+          ansible.builtin.command: kubectl version --client
+          register: kubectl_version
+          changed_when: false
+
+        - name: Display kubectl version
+          ansible.builtin.debug:
+            msg: "{{ kubectl_version.stdout }}"
+
+        - name: Install helm
+          ansible.builtin.shell: |
+            curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+            chmod +x get_helm.sh
+            ./get_helm.sh
+            rm get_helm.sh
+          args:
+            creates: /usr/local/bin/helm
+
+        - name: Verify helm version
+          ansible.builtin.command: helm version
+          register: helm_version
+          changed_when: false
+
+        - name: Display helm version
+          ansible.builtin.debug:
+            msg: "{{ helm_version.stdout }}"
+    ```

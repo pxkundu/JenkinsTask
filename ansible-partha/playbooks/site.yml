@@ -1,0 +1,21 @@
+---
+- name: Configure Kubernetes Worker Node
+  hosts: k8s_workers
+  become: yes
+  tasks:
+    - name: Ping the worker node
+      ansible.builtin.ping:
+    
+    - name: Ensure tree package is installed
+      ansible.builtin.yum:
+        name: tree
+        state: present
+    
+    - name: Verify tree installation
+      ansible.builtin.command: tree --version
+      register: tree_version
+      changed_when: false
+    
+    - name: Display tree version
+      ansible.builtin.debug:
+        msg: "{{ tree_version.stdout }}"

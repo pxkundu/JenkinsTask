@@ -1,0 +1,56 @@
+---
+- name: Configure Kubernetes Worker Node
+  hosts: k8s_workers
+  become: yes
+  tasks:
+    - name: Install jq package
+      ansible.builtin.yum:
+        name: jq
+        state: present
+      register: jq_install
+
+    - name: Verify jq installation
+      ansible.builtin.command: jq --version
+      register: jq_version
+      changed_when: false
+
+    - name: Display jq version
+      ansible.builtin.debug:
+        msg: "{{ jq_version.stdout }}"
+
+    - name: Deploy node check script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Check Kubernetes node status
+          kubectl get nodes k8-worker-partha --no-headers | awk '{print $2}'
+        dest: /usr/local/bin/check_node.sh
+        mode: '0755'
+        owner: ec2-user
+        group: ec2-user
+
+    - name: Verify check_node.sh exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/check_node.sh
+      register: script_stat
+
+    - name: Display script status
+      ansible.builtin.debug:
+        msg: "check_node.sh exists: {{ script_stat.stat.exists }}"
+
+    - name: Label Kubernetes node
+      ansible.builtin.command: kubectl label nodes k8-worker-partha app=worker --overwrite
+      delegate_to: localhost
+      changed_when: true
+      run_once: true
+
+    - name: Verify node label
+      ansible.builtin.command: kubectl get nodes k8-worker-partha --show-labels
+      delegate_to: localhost
+      register: node_labels
+      changed_when: false
+      run_once: true
+
+    - name: Display node labels
+      ansible.builtin.debug:
+        msg: "{{ node_labels.stdout }}"
