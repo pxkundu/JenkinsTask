@@ -1,0 +1,66 @@
+---
+- name: Harden EKS Worker Node Security
+  hosts: k8s_workers
+  become: yes
+  tasks:
+    - name: Disable root SSH login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+      notify: Restart sshd
+
+    - name: Disable password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+      notify: Restart sshd
+
+    - name: Enable SELinux
+      ansible.builtin.command: setenforce 1
+      changed_when: true
+
+    - name: Configure SELinux to enforcing
+      ansible.builtin.lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: 'SELINUX=enforcing'
+        state: present
+
+    - name: Install firewalld
+      ansible.builtin.yum:
+        name: firewalld
+        state: present
+
+    - name: Start and enable firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: started
+        enabled: yes
+
+    - name: Allow SSH in firewalld
+      ansible.builtin.command: firewall-cmd --permanent --add-service=ssh
+      changed_when: true
+      notify: Reload firewalld
+
+    - name: Verify SSH configuration
+      ansible.builtin.command: sshd -t
+      register: sshd_test
+      changed_when: false
+
+    - name: Display SSH configuration test
+      ansible.builtin.debug:
+        msg: "{{ sshd_test.stdout | default('SSHD config is valid') }}"
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+
+    - name: Reload firewalld
+      ansible.builtin.command: firewall-cmd --reload
+      changed_when: true

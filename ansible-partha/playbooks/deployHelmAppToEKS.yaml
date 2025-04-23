@@ -1,0 +1,51 @@
+---
+- name: Deploy Nginx Application to EKS using Helm
+  hosts: k8s_workers
+  become: yes
+  tasks:
+    - name: Install Helm
+      ansible.builtin.shell: |
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        chmod +x get_helm.sh
+        ./get_helm.sh
+        rm get_helm.sh
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Verify Helm installation
+      ansible.builtin.command: helm version
+      register: helm_version
+      changed_when: false
+
+    - name: Display Helm version
+      ansible.builtin.debug:
+        msg: "{{ helm_version.stdout }}"
+
+    - name: Add Bitnami Helm repository
+      ansible.builtin.command: helm repo add bitnami https://charts.bitnami.com/bitnami
+      delegate_to: localhost
+      changed_when: true
+      run_once: true
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      delegate_to: localhost
+      changed_when: true
+      run_once: true
+
+    - name: Deploy Nginx using Helm
+      ansible.builtin.command: helm upgrade --install nginx bitnami/nginx --namespace default --set service.type=ClusterIP
+      delegate_to: localhost
+      changed_when: true
+      run_once: true
+
+    - name: Verify Nginx pod deployment
+      ansible.builtin.command: kubectl get pods -n default -l app.kubernetes.io/name=nginx
+      delegate_to: localhost
+      register: pod_status
+      changed_when: false
+      run_once: true
+
+    - name: Display pod status
+      ansible.builtin.debug:
+        msg: "{{ pod_status.stdout }}"

@@ -1,0 +1,85 @@
+---
+- name: Configure IAM Roles for Service Accounts in EKS
+  hosts: localhost
+  become: no
+  vars:
+    cluster_name: my-eks-cluster
+    role_name: eks-s3-access-role
+    namespace: default
+    service_account: s3-access-sa
+  tasks:
+    - name: Create IAM policy for S3 access
+      ansible.builtin.command: |
+        aws iam create-policy \
+          --policy-name EKSS3AccessPolicy \
+          --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}'
+      register: policy_result
+      changed_when: true
+      run_once: true
+
+    - name: Extract policy ARN
+      ansible.builtin.set_fact:
+        policy_arn: "{{ (policy_result.stdout | from_json).Policy.Arn }}"
+
+    - name: Create IAM role for IRSA
+      ansible.builtin.command: |
+        aws iam create-role \
+          --role-name {{ role_name }} \
+          --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Federated":"arn:aws:iam::{{ ansible_aws_account_id }}:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/{{ cluster_name }}"},"Action":"sts:AssumeRoleWithWebIdentity","Condition":{"StringEquals":{"oidc.eks.us-east-1.amazonaws.com/id/{{ cluster_name }}:sub":"system:serviceaccount:{{ namespace }}:{{ service_account }}"}}}]}'
+      register: role_result
+      changed_when: true
+      run_once: true
+
+    - name: Attach policy to role
+      ansible.builtin.command: |
+        aws iam attach-role-policy \
+          --role-name {{ role_name }} \
+          --policy-arn {{ policy_arn }}
+      changed_when: true
+      run_once: true
+
+    - name: Create Kubernetes service account
+      ansible.builtin.command: |
+        kubectl create sa {{ service_account }} -n {{ namespace }}
+      changed_when: true
+      run_once: true
+
+    - name: Annotate service account with IAM role
+      ansible.builtin.command: |
+        kubectl annotate sa {{ service_account }} -n {{ namespace }} \
+          eks.amazonaws.com/role-arn=arn:aws:iam::{{ ansible_aws_account_id }}:role/{{ role_name }}
+      changed_when: true
+      run_once: true
+
+    - name: Deploy test pod with service account
+      ansible.builtin.copy:
+        content: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: s3-test-pod
+            namespace: {{ namespace }}
+          spec:
+            serviceAccountName: {{ service_account }}
+            containers:
+            - name: aws-cli
+              image: amazon/aws-cli:latest
+              command: ["sleep", "3600"]
+        dest: /tmp/s3_test_pod.yaml
+        mode: '0644'
+
+    - name: Apply test pod
+      ansible.builtin.command: kubectl apply -f /tmp/s3_test_pod.yaml
+      changed_when: true
+      run_once: true
+
+    - name: Verify S3 access from pod
+      ansible.builtin.command: |
+        kubectl exec -n {{ namespace }} s3-test-pod -- aws s3 ls
+      register: s3_access
+      changed_when: false
+      run_once: true
+
+    - name: Display S3 access result
+      ansible.builtin.debug:
+        msg: "{{ s3_access.stdout }}"

@@ -1,0 +1,56 @@
+---
+- name: Configure EKS Node Group Autoscaling
+  hosts: localhost
+  become: no
+  vars:
+    cluster_name: my-eks-cluster
+    node_group_name: worker-nodes
+    min_size: 1
+    max_size: 3
+    desired_size: 1
+  tasks:
+    - name: Install AWS CLI
+      ansible.builtin.shell: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
+        rm -rf aws awscliv2.zip
+      args:
+        creates: /usr/local/bin/aws
+
+    - name: Create EKS node group
+      ansible.builtin.command: |
+        aws eks create-nodegroup \
+          --cluster-name {{ cluster_name }} \
+          --nodegroup-name {{ node_group_name }} \
+          --scaling-config minSize={{ min_size }},maxSize={{ max_size }},desiredSize={{ desired_size }} \
+          --instance-types t3.medium \
+          --subnets subnet-12345678 subnet-87654321 \
+          --node-role arn:aws:iam::{{ ansible_aws_account_id }}:role/EKSNodeRole
+      register: nodegroup_result
+      changed_when: true
+      run_once: true
+      ignore_errors: true
+
+    - name: Deploy Cluster Autoscaler
+      ansible.builtin.command: |
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/autoscaler/master/cluster-autoscaler/cloudprovider/aws/examples/cluster-autoscaler-autodiscover.yaml
+      changed_when: true
+      run_once: true
+
+    - name: Patch Cluster Autoscaler deployment
+      ansible.builtin.command: |
+        kubectl patch deployment cluster-autoscaler -n kube-system \
+          -p '{"spec":{"template":{"spec":{"containers":[{"name":"cluster-autoscaler","command":["./cluster-autoscaler","--v=4","--cloud-provider=aws","--namespace=kube-system","--cluster-name={{ cluster_name }}"]}]}}}}'
+      changed_when: true
+      run_once: true
+
+    - name: Verify node group status
+      ansible.builtin.command: aws eks describe-nodegroup --cluster-name {{ cluster_name }} --nodegroup-name {{ node_group_name }}
+      register: nodegroup_status
+      changed_when: false
+      run_once: true
+
+    - name: Display node group status
+      ansible.builtin.debug:
+        msg: "{{ (nodegroup_status.stdout | from_json).nodegroup.status }}"
